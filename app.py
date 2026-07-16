@@ -5,27 +5,76 @@ from pdf2image import convert_from_bytes
 import os # Para verificar a existência dos arquivos de imagem
 import base64
 
-# Configuração de segurança da página
-st.set_page_config(page_title="⚓SILASCA NAVAL⚓", layout="wide")
+# --- 1. CABEÇALHO VISUAL (LOGO E SLOGAN NO TOPO) ---
+# Proporção [1.5, 1, 1.5] -> Mantém o logo no centro e dá bastante espaço para o slogan na direita.
+col_esq, col_logo, col_slogan = st.columns([1.5, 1, 1.5]) 
 
-# --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
-# O segredo do SISAFA: colunas laterais espremem a coluna central para o tamanho perfeito
-col_logo_1, col_logo_2, col_logo_3 = st.columns([1.5, 1, 1.5]) 
-
-with col_logo_2:
+with col_logo:
     if os.path.exists("LOGO_SILASCA.png"):
-        # use_container_width=True faz a imagem preencher exatamente os 25% da coluna central
+        # Logo fica centralizado na coluna do meio
         st.image("LOGO_SILASCA.png", use_container_width=True)
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
+with col_slogan:
+    if os.path.exists("slogan.png"):
+        # Um pequeno respiro vertical (br) para o slogan não ficar colado no teto e se alinhar com o logo
+        st.markdown("<br>", unsafe_allow_html=True) 
+        # Slogan fica alocado na coluna da direita (canto superior direito)
+        st.image("slogan.png", use_container_width=True)
+    else:
+        st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
+
 
 # --- 2. TÍTULOS E TEXTOS DO SISTEMA ---
-st.markdown("<h1 style='text-align: center;'>⚓ SISAFA - Analisador e Interpretador de OCR</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.</p>", unsafe_allow_html=True)
-st.write("---") # Linha divisória
-
-
+st.markdown("""
+            <div style="text-align: center; padding: 30px; border-top: 2px solid #2e6b54; margin-top: 40px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
+                <p style="
+                    color: #2e6b54; 
+                    font-weight: 900; 
+                    font-size: 1.8rem; 
+                    letter-spacing: 3px; 
+                    line-height: 1.2;
+                    text-shadow: 0 0 10px #2e6b54, 0 0 20px #2e6b54, 0 0 30px #2e6b54;
+                ">
+                    Analisador e Interpretador de faturas
+                </p>
+                <p style="
+                    color: #555; 
+                    font-size: 1.1rem; 
+                    font-weight: 700; 
+                    margin-top: -10px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                ">
+                    (SEPÚLVEDA, A.C.M)
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+st.markdown("""
+            <div style="text-align: center; padding: 30px; border-top: 2px solid #2e6b54; margin-top: 40px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
+                <p style="
+                    color: #2e6b54; 
+                    font-weight: 900; 
+                    font-size: 1.8rem; 
+                    letter-spacing: 3px; 
+                    line-height: 1.2;
+                    text-shadow: 0 0 10px #2e6b54, 0 0 20px #2e6b54, 0 0 30px #2e6b54;
+                ">
+                    Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.
+                </p>
+                <p style="
+                    color: #555; 
+                    font-size: 1.1rem; 
+                    font-weight: 700; 
+                    margin-top: -10px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                ">
+                    (SEPÚLVEDA, A.C.M)
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 
@@ -110,17 +159,3 @@ if pdf_carregado is not None:
         except Exception as e:
             st.error(f"Erro ao ler e processar o PDF: {e}")
 
-
-# --- 4. RODAPÉ VISUAL (SLOGAN CENTRALIZADO NO BAIXO) ---
-st.write("---") # Linha divisória antes do rodapé
-st.markdown("<br><br>", unsafe_allow_html=True) 
-
-# Proporção ajustada para slogans horizontais (mais largos)
-col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 1.5, 1])
-
-with col_slogan_2:
-    if os.path.exists("slogan.png"):
-        # use_container_width=True garante centralização e redimensionamento impecáveis
-        st.image("slogan.png", use_container_width=True)
-    else:
-        st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
