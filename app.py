@@ -8,17 +8,15 @@ import os # Para verificar a existência dos arquivos de imagem
 st.set_page_config(page_title="SISAFA - Inspetor OCR", layout="wide")
 
 # --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
-# Criamos 3 colunas. A do meio (col_logo_2) será usada para centralizar.
-col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 2, 1]) 
+# Aumentamos os lados para [3, 1, 3] para deixar a coluna do meio bem estreita e elegante
+col_logo_1, col_logo_2, col_logo_3 = st.columns([3, 1.2, 3]) 
 
 with col_logo_2:
-    # Verifica se o arquivo existe para evitar erros se não tiver sido subido
     if os.path.exists("LOGO_SILASCA.png"):
-        # Centraliza o logo e define uma largura apropriada (ex: 300px)
-        st.image("LOGO_SILASCA.png", use_column_width=True)
+        # Definimos uma largura fixa de 150 pixels (ajuste este número se quiser maior/menor)
+        st.image("LOGO_SILASCA.png", width=150)
     else:
-        # Mostra um aviso se o arquivo estiver faltando no GitHub
-        st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
+        st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado.")
 
 # --- 2. TÍTULOS E TEXTOS DO SISTEMA ---
 st.markdown("<h1 style='text-align: center;'>⚓ Analisador e Interpretador de faturas</h1>", unsafe_allow_html=True)
@@ -112,16 +110,15 @@ if pdf_carregado is not None:
 
 
 # --- 4. RODAPÉ VISUAL (SLOGAN CENTRALIZADO NO BAIXO) ---
-st.write("---") # Linha divisória antes do rodapé
-# Espaçador vertical para empurrar o slogan para baixo
-st.markdown("<br><br>", unsafe_allow_html=True) 
+st.write("---") 
+st.markdown("<br>", unsafe_allow_html=True) # Apenas um respiro simples
 
-# Novamente, usamos 3 colunas para centralizar o slogan
-col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 3, 1])
+# Proporção [2, 1, 2] para dar um espaço confortável para o slogan
+col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([2, 1.5, 2])
 
 with col_slogan_2:
     if os.path.exists("slogan.png"):
-        # Centraliza o slogan e define uma largura apropriada (ex: 400px)
-        st.image("slogan.png", use_column_width=True)
+        # Definimos uma largura fixa de 280 pixels para o slogan ficar discreto
+        st.image("slogan.png", width=280)
     else:
-        st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
+        st.warning("⚠️ Arquivo 'slogan.png' não encontrado.")
