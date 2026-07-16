@@ -8,15 +8,18 @@ import os # Para verificar a existência dos arquivos de imagem
 st.set_page_config(page_title="SISAFA - Inspetor OCR", layout="wide")
 
 # --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
-# Aumentamos os lados para [3, 1, 3] para deixar a coluna do meio bem estreita e elegante
-col_logo_1, col_logo_2, col_logo_3 = st.columns([3, 1.2, 3]) 
-
-with col_logo_2:
-    if os.path.exists("LOGO_SILASCA.png"):
-        # Definimos uma largura fixa de 150 pixels (ajuste este número se quiser maior/menor)
-        st.image("LOGO_SILASCA.png", width=150)
-    else:
-        st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado.")
+if os.path.exists("LOGO_SILASCA.png"):
+    # Usamos HTML para garantir centralização absoluta e controle perfeito do tamanho (220px)
+    st.markdown(
+        """
+        <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+            <img src="app/static/LOGO_SILASCA.png" width="220" style="max-width: 100%; height: auto;">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado.")
 
 # --- 2. TÍTULOS E TEXTOS DO SISTEMA ---
 st.markdown("<h1 style='text-align: center;'>⚓ Analisador e Interpretador de faturas</h1>", unsafe_allow_html=True)
@@ -111,14 +114,17 @@ if pdf_carregado is not None:
 
 # --- 4. RODAPÉ VISUAL (SLOGAN CENTRALIZADO NO BAIXO) ---
 st.write("---") 
-st.markdown("<br>", unsafe_allow_html=True) # Apenas um respiro simples
+st.markdown("<br>", unsafe_allow_html=True) 
 
-# Proporção [2, 1, 2] para dar um espaço confortável para o slogan
-col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([2, 1.5, 2])
-
-with col_slogan_2:
-    if os.path.exists("slogan.png"):
-        # Definimos uma largura fixa de 280 pixels para o slogan ficar discreto
-        st.image("slogan.png", width=280)
-    else:
-        st.warning("⚠️ Arquivo 'slogan.png' não encontrado.")
+if os.path.exists("slogan.png"):
+    # Centralização absoluta por HTML com tamanho ideal (380px)
+    st.markdown(
+        """
+        <div style="display: flex; justify-content: center; margin-top: 10px;">
+            <img src="app/static/slogan.png" width="380" style="max-width: 100%; height: auto;">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    st.warning("⚠️ Arquivo 'slogan.png' não encontrado.")
