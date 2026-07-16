@@ -8,17 +8,16 @@ import os # Para verificar a existência dos arquivos de imagem
 st.set_page_config(page_title="⚓SILASCA NAVAL⚓", layout="wide")
 
 # --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
-# Criamos 3 colunas. A do meio (col_logo_2) será usada para centralizar.
-col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 2, 1]) 
+# As colunas laterais (2.5) espremem a coluna central (1) para o logo não ficar gigante
+col_logo_1, col_logo_2, col_logo_3 = st.columns([2.5, 1, 2.5]) 
 
 with col_logo_2:
-    # Verifica se o arquivo existe para evitar erros se não tiver sido subido
     if os.path.exists("LOGO_SILASCA.png"):
-        # Centraliza o logo e define uma largura apropriada (ex: 300px)
-        st.image("LOGO_SILASCA.png", use_column_width=True)
+        # use_container_width=True fará a imagem respeitar exatamente o tamanho da coluna 2
+        st.image("LOGO_SILASCA.png", use_container_width=True)
     else:
-        # Mostra um aviso se o arquivo estiver faltando no GitHub
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
+
 
 # --- 2. TÍTULOS E TEXTOS DO SISTEMA ---
 st.markdown("<h1 style='text-align: center;'>⚓ SISAFA - Analisador e Interpretador de OCR</h1>", unsafe_allow_html=True)
@@ -116,12 +115,11 @@ st.write("---") # Linha divisória antes do rodapé
 # Espaçador vertical para empurrar o slogan para baixo
 st.markdown("<br><br>", unsafe_allow_html=True) 
 
-# Novamente, usamos 3 colunas para centralizar o slogan
-col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 3, 1])
+# Coluna central ligeiramente maior (2) para acomodar o texto do slogan
+col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1.5, 2, 1.5])
 
 with col_slogan_2:
     if os.path.exists("slogan.png"):
-        # Centraliza o slogan e define uma largura apropriada (ex: 400px)
-        st.image("slogan.png", use_column_width=True)
+        st.image("slogan.png", use_container_width=True)
     else:
         st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
