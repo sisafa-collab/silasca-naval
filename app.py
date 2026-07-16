@@ -5,30 +5,23 @@ from pdf2image import convert_from_bytes
 import os # Para verificar a existência dos arquivos de imagem
 
 # Configuração de segurança da página
-st.set_page_config(page_title="SISAFA - Inspetor OCR", layout="wide")
+st.set_page_config(page_title="⚓SILASCA NAVAL⚓", layout="wide")
 
 # --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
-# Alternativa caso o caminho acima não renderize (usando o próprio st.image dentro de colunas calibradas):
-col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 1, 1]) # Proporções iguais
-with col_logo_2: # Coluna centralizada
-    if os.path.exists("LOGO_SILASCA.png"):
-        st.image("LOGO_SILASCA.png", width=220) # Aumentamos para 220px para não ficar pequeno
+# Criamos 3 colunas. A do meio (col_logo_2) será usada para centralizar.
+col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 2, 1]) 
 
-if os.path.exists("LOGO_SILASCA.png"):
-    # Usamos HTML para garantir centralização absoluta e controle perfeito do tamanho (220px)
-    st.markdown(
-        """
-        <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-            <img src="app/static/LOGO_SILASCA.png" width="220" style="max-width: 100%; height: auto;">
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado.")
+with col_logo_2:
+    # Verifica se o arquivo existe para evitar erros se não tiver sido subido
+    if os.path.exists("LOGO_SILASCA.png"):
+        # Centraliza o logo e define uma largura apropriada (ex: 300px)
+        st.image("LOGO_SILASCA.png", use_column_width=True)
+    else:
+        # Mostra um aviso se o arquivo estiver faltando no GitHub
+        st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
 # --- 2. TÍTULOS E TEXTOS DO SISTEMA ---
-st.markdown("<h1 style='text-align: center;'>⚓ Analisador e Interpretador de faturas</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>⚓ SISAFA - Analisador e Interpretador de OCR</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.</p>", unsafe_allow_html=True)
 st.write("---") # Linha divisória
 
@@ -119,18 +112,16 @@ if pdf_carregado is not None:
 
 
 # --- 4. RODAPÉ VISUAL (SLOGAN CENTRALIZADO NO BAIXO) ---
-st.write("---") 
-st.markdown("<br>", unsafe_allow_html=True) 
+st.write("---") # Linha divisória antes do rodapé
+# Espaçador vertical para empurrar o slogan para baixo
+st.markdown("<br><br>", unsafe_allow_html=True) 
 
-if os.path.exists("slogan.png"):
-    # Centralização absoluta por HTML com tamanho ideal (380px)
-    st.markdown(
-        """
-        <div style="display: flex; justify-content: center; margin-top: 10px;">
-            <img src="app/static/slogan.png" width="380" style="max-width: 100%; height: auto;">
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.warning("⚠️ Arquivo 'slogan.png' não encontrado.")
+# Novamente, usamos 3 colunas para centralizar o slogan
+col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 3, 1])
+
+with col_slogan_2:
+    if os.path.exists("slogan.png"):
+        # Centraliza o slogan e define uma largura apropriada (ex: 400px)
+        st.image("slogan.png", use_column_width=True)
+    else:
+        st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
