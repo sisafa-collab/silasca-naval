@@ -2,12 +2,28 @@ import streamlit as st
 import pytesseract
 import re
 from pdf2image import convert_from_bytes
+import os # Para verificar a existência dos arquivos de imagem
 
 # Configuração de segurança da página
 st.set_page_config(page_title="SISAFA - Inspetor OCR", layout="wide")
 
-st.title("⚓ SISAFA - Analisador e Interpretador de OCR")
-st.write("Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.")
+# --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
+# Criamos 3 colunas. A do meio (col_logo_2) será usada para centralizar.
+col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 2, 1]) 
+
+with col_logo_2:
+    # Verifica se o arquivo existe para evitar erros se não tiver sido subido
+    if os.path.exists("LOGO_SILASCA.png"):
+        # Centraliza o logo e define uma largura apropriada (ex: 300px)
+        st.image("LOGO_SILASCA.png", use_column_width=True)
+    else:
+        # Mostra um aviso se o arquivo estiver faltando no GitHub
+        st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
+
+# --- 2. TÍTULOS E TEXTOS DO SISTEMA ---
+st.markdown("<h1 style='text-align: center;'>⚓ Analisador e Interpretador de faturas</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.</p>", unsafe_allow_html=True)
+st.write("---") # Linha divisória
 
 # Upload do arquivo para a RAM
 pdf_carregado = st.file_uploader("Suba a fatura escaneada em PDF", type=["pdf"])
