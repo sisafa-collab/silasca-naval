@@ -5,76 +5,58 @@ from pdf2image import convert_from_bytes
 import os # Para verificar a existência dos arquivos de imagem
 import base64
 
-# --- 1. CABEÇALHO VISUAL (LOGO E SLOGAN NO TOPO) ---
-# Proporção [1.5, 1, 1.5] -> Mantém o logo no centro e dá bastante espaço para o slogan na direita.
-col_esq, col_logo, col_slogan = st.columns([1.5, 1, 1.5]) 
+# --- 1. CABEÇALHO VISUAL (LOGO E SLOGAN CENTRALIZADOS NO TOPO) ---
 
-with col_logo:
+# --- LINHA 1: O LOGO ---
+# Proporção [1.5, 1, 1.5] para o logo não ficar gigante
+col_logo_1, col_logo_2, col_logo_3 = st.columns([1.5, 1, 1.5]) 
+
+with col_logo_2:
     if os.path.exists("LOGO_SILASCA.png"):
-        # Logo fica centralizado na coluna do meio
         st.image("LOGO_SILASCA.png", use_container_width=True)
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
-with col_slogan:
+# --- LINHA 2: O SLOGAN ---
+# Proporção [1, 1.5, 1] para dar mais espaço de leitura ao texto do slogan
+col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 1.5, 1])
+
+with col_slogan_2:
     if os.path.exists("slogan.png"):
-        # Um pequeno respiro vertical (br) para o slogan não ficar colado no teto e se alinhar com o logo
-        st.markdown("<br>", unsafe_allow_html=True) 
-        # Slogan fica alocado na coluna da direita (canto superior direito)
+        # Pequeno espaço invisível para que o slogan não fique "colado" ao logótipo
+        st.markdown("<div style='margin-top: -15px;'></div>", unsafe_allow_html=True)
         st.image("slogan.png", use_container_width=True)
     else:
         st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
 
 
-# --- 2. TÍTULOS E TEXTOS DO SISTEMA ---
+# --- 2. TÍTULOS E TEXTOS DO SISTEMA (UNIFICADOS E COMPACTOS) ---
 st.markdown("""
-            <div style="text-align: center; padding: 30px; border-top: 2px solid #2e6b54; margin-top: 40px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
-                <p style="
-                    color: #2e6b54; 
-                    font-weight: 900; 
-                    font-size: 1.8rem; 
-                    letter-spacing: 3px; 
-                    line-height: 1.2;
-                    text-shadow: 0 0 10px #2e6b54, 0 0 20px #2e6b54, 0 0 30px #2e6b54;
-                ">
-                    Analisador e Interpretador de faturas
-                </p>
-                <p style="
-                    color: #555; 
-                    font-size: 1.1rem; 
-                    font-weight: 700; 
-                    margin-top: -10px;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                ">
-                    (SEPÚLVEDA, A.C.M)
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-st.markdown("""
-            <div style="text-align: center; padding: 30px; border-top: 2px solid #2e6b54; margin-top: 40px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
-                <p style="
-                    color: #2e6b54; 
-                    font-weight: 900; 
-                    font-size: 1.8rem; 
-                    letter-spacing: 3px; 
-                    line-height: 1.2;
-                    text-shadow: 0 0 10px #2e6b54, 0 0 20px #2e6b54, 0 0 30px #2e6b54;
-                ">
-                    Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.
-                </p>
-                <p style="
-                    color: #555; 
-                    font-size: 1.1rem; 
-                    font-weight: 700; 
-                    margin-top: -10px;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                ">
-                    (SEPÚLVEDA, A.C.M)
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+    <div style="text-align: center; padding: 20px; border-top: 2px solid #2e6b54; margin-top: 10px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
+        <p style="
+            color: #2e6b54; 
+            font-weight: 900; 
+            font-size: 1.8rem; 
+            letter-spacing: 3px; 
+            line-height: 1.2;
+            text-shadow: 0 0 10px #2e6b54, 0 0 20px #2e6b54, 0 0 30px #2e6b54;
+            margin-bottom: 5px;
+        ">
+            Analisador e Interpretador de Faturas
+        </p>
+        
+        <p style="
+            color: #555; 
+            font-size: 1.1rem; 
+            font-weight: 700; 
+            margin-top: 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        ">
+            Foco absoluto na leitura e interpretação de faturas escaneadas
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
 
 
