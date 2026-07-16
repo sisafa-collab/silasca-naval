@@ -3,6 +3,7 @@ import pytesseract
 import re
 from pdf2image import convert_from_bytes
 import os # Para verificar a existência dos arquivos de imagem
+import base64
 
 # Configuração de segurança da página
 st.set_page_config(page_title="⚓SILASCA NAVAL⚓", layout="wide")
@@ -13,8 +14,14 @@ col_logo_1, col_logo_2, col_logo_3 = st.columns([2.5, 1, 2.5])
 
 with col_logo_2:
     if os.path.exists("LOGO_SILASCA.png"):
-        # use_container_width=True fará a imagem respeitar exatamente o tamanho da coluna 2
-        st.image("LOGO_SILASCA.png", use_container_width=True)
+        with open("LOGO_SILASCA.png", "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+            # Aqui você controla os pixels exatos no 'width="220px"'
+            st.markdown(
+                f'<div style="display: flex; justify-content: center;">'
+                f'<img src="data:image/png;base64,{data}" width="220px"></div>', 
+                unsafe_allow_html=True
+            )
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
