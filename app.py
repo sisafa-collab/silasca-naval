@@ -6,7 +6,7 @@ from PIL import Image
 # Configuração da página
 st.set_page_config(page_title="SISAFA - Leitor OCR", layout="wide")
 
-st.title("⚓ SISAFA - Inspetor OCR (PDFs Escaneados)")
+st.title("⚓ SILASCA NAVAL")
 st.write("Suba um arquivo PDF escaneado para que o motor OCR converta em texto editável.")
 
 # Upload do arquivo para a RAM
