@@ -25,6 +25,12 @@ st.markdown("<h1 style='text-align: center;'>⚓ Analisador e Interpretador de f
 st.markdown("<p style='text-align: center;'>Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.</p>", unsafe_allow_html=True)
 st.write("---") # Linha divisória
 
+
+
+
+
+
+
 # Upload do arquivo para a RAM
 pdf_carregado = st.file_uploader("Suba a fatura escaneada em PDF", type=["pdf"])
 
@@ -103,3 +109,19 @@ if pdf_carregado is not None:
                             
         except Exception as e:
             st.error(f"Erro ao ler e processar o PDF: {e}")
+
+
+# --- 4. RODAPÉ VISUAL (SLOGAN CENTRALIZADO NO BAIXO) ---
+st.write("---") # Linha divisória antes do rodapé
+# Espaçador vertical para empurrar o slogan para baixo
+st.markdown("<br><br>", unsafe_allow_html=True) 
+
+# Novamente, usamos 3 colunas para centralizar o slogan
+col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 3, 1])
+
+with col_slogan_2:
+    if os.path.exists("slogan.png"):
+        # Centraliza o slogan e define uma largura apropriada (ex: 400px)
+        st.image("slogan.png", use_column_width=True)
+    else:
+        st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
