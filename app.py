@@ -9,19 +9,13 @@ import base64
 st.set_page_config(page_title="⚓SILASCA NAVAL⚓", layout="wide")
 
 # --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
-# As colunas laterais (2.5) espremem a coluna central (1) para o logo não ficar gigante
-col_logo_1, col_logo_2, col_logo_3 = st.columns([2.5, 1, 2.5]) 
+# O segredo do SISAFA: colunas laterais espremem a coluna central para o tamanho perfeito
+col_logo_1, col_logo_2, col_logo_3 = st.columns([1.5, 1, 1.5]) 
 
 with col_logo_2:
     if os.path.exists("LOGO_SILASCA.png"):
-        with open("LOGO_SILASCA.png", "rb") as f:
-            data = base64.b64encode(f.read()).decode()
-            # Aqui você controla os pixels exatos no 'width="220px"'
-            st.markdown(
-                f'<div style="display: flex; justify-content: center;">'
-                f'<img src="data:image/png;base64,{data}" width="220px"></div>', 
-                unsafe_allow_html=True
-            )
+        # use_container_width=True faz a imagem preencher exatamente os 25% da coluna central
+        st.image("LOGO_SILASCA.png", use_container_width=True)
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
@@ -119,14 +113,14 @@ if pdf_carregado is not None:
 
 # --- 4. RODAPÉ VISUAL (SLOGAN CENTRALIZADO NO BAIXO) ---
 st.write("---") # Linha divisória antes do rodapé
-# Espaçador vertical para empurrar o slogan para baixo
 st.markdown("<br><br>", unsafe_allow_html=True) 
 
-# Coluna central ligeiramente maior (2) para acomodar o texto do slogan
-col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1.5, 2, 1.5])
+# Proporção ajustada para slogans horizontais (mais largos)
+col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 1.5, 1])
 
 with col_slogan_2:
     if os.path.exists("slogan.png"):
+        # use_container_width=True garante centralização e redimensionamento impecáveis
         st.image("slogan.png", use_container_width=True)
     else:
         st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
