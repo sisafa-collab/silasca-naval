@@ -8,6 +8,12 @@ import os # Para verificar a existência dos arquivos de imagem
 st.set_page_config(page_title="SISAFA - Inspetor OCR", layout="wide")
 
 # --- 1. CABEÇALHO VISUAL (LOGO CENTRALIZADO NO TOPO) ---
+# Alternativa caso o caminho acima não renderize (usando o próprio st.image dentro de colunas calibradas):
+col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 1, 1]) # Proporções iguais
+with col_logo_2: # Coluna centralizada
+    if os.path.exists("LOGO_SILASCA.png"):
+        st.image("LOGO_SILASCA.png", width=220) # Aumentamos para 220px para não ficar pequeno
+
 if os.path.exists("LOGO_SILASCA.png"):
     # Usamos HTML para garantir centralização absoluta e controle perfeito do tamanho (220px)
     st.markdown(
