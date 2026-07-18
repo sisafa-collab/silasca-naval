@@ -31,13 +31,6 @@ with col_logo_2:
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
-# --- 3. TÍTULOS DO SISTEMA (NATIVO E LIMPO) ---
-st.markdown("<h1 style='text-align: center; color: #2e6b54; margin-top: 10px;'>Analisador e Interpretador de Faturas</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; font-size: 1.1rem; font-weight: 500;'>Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.</p>", unsafe_allow_html=True)
-
-st.divider() # Linha divisória antes de começar o upload do PDF
-
-
 # --- 2. TÍTULOS E TEXTOS DO SISTEMA (UNIFICADOS E COMPACTOS) ---
 st.markdown("""
     <div style="text-align: center; padding: 20px; border-top: 2px solid #2e6b54; margin-top: 10px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
