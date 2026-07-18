@@ -4,11 +4,25 @@ import re
 from pdf2image import convert_from_bytes
 import os # Para verificar a existência dos arquivos de imagem
 import base64
+import os
+import streamlit as st
 
-# --- 1. CABEÇALHO VISUAL (LOGO E SLOGAN CENTRALIZADOS NO TOPO) ---
+# =================================================================
+# ⚓ SEÇÃO VISUAL E IDENTIDADE (TOPO CENTRALIZADO & SLOGAN FIXO)
+# =================================================================
 
-# --- LINHA 1: O LOGO ---
-# Proporção [1.5, 1, 1.5] para o logo não ficar gigante
+# --- 1. SLOGAN FIXO NO CANTO INFERIOR DIREITO  ---
+if os.path.exists("slogan.png"):
+    with open("slogan.png", "rb") as f:
+        data_slogan = base64.b64encode(f.read()).decode()
+        # Injeta o slogan fixado no canto inferior direito (largura elegante de 220px)
+        st.markdown(
+            f'<img src="data:image/png;base64,{data_slogan}" '
+            f'style="position: fixed; bottom: 20px; right: 20px; width: 220px; z-index: 9999;">', 
+            unsafe_allow_html=True
+        )
+
+# --- 2. LOGO CENTRALIZADO NO TOPO ---
 col_logo_1, col_logo_2, col_logo_3 = st.columns([1.5, 1, 1.5]) 
 
 with col_logo_2:
@@ -17,24 +31,18 @@ with col_logo_2:
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
-# --- LINHA 2: O SLOGAN ---
-# Proporção [1, 1.5, 1] para dar mais espaço de leitura ao texto do slogan
-col_slogan_1, col_slogan_2, col_slogan_3 = st.columns([1, 1.5, 1])
+# --- 3. TÍTULOS DO SISTEMA (NATIVO E LIMPO) ---
+st.markdown("<h1 style='text-align: center; color: #2e6b54; margin-top: 10px;'>Analisador e Interpretador de Faturas</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 1.1rem; font-weight: 500;'>Foco absoluto na leitura, interpretação e busca de termos dentro do texto bruto extraído de faturas escaneadas.</p>", unsafe_allow_html=True)
 
-with col_slogan_2:
-    if os.path.exists("slogan.png"):
-        # Pequeno espaço invisível para que o slogan não fique "colado" ao logótipo
-        st.markdown("<div style='margin-top: -15px;'></div>", unsafe_allow_html=True)
-        st.image("slogan.png", use_container_width=True)
-    else:
-        st.warning("⚠️ Arquivo 'slogan.png' não encontrado no repositório.")
+st.divider() # Linha divisória antes de começar o upload do PDF
 
 
 # --- 2. TÍTULOS E TEXTOS DO SISTEMA (UNIFICADOS E COMPACTOS) ---
 st.markdown("""
     <div style="text-align: center; padding: 20px; border-top: 2px solid #2e6b54; margin-top: 10px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
         <p style="
-            color: #2e6b54; 
+            color: #bc3c31; 
             font-weight: 900; 
             font-size: 1.8rem; 
             letter-spacing: 3px; 
@@ -46,21 +54,17 @@ st.markdown("""
         </p>
         
         <p style="
-            color: #555; 
+            color: 4c4955; 
             font-size: 1.1rem; 
             font-weight: 700; 
             margin-top: 0;
             text-transform: uppercase;
             letter-spacing: 1px;
         ">
-            Foco absoluto na leitura e interpretação de faturas escaneadas
+            Foco absoluto na leitura e interpretação de faturas escaneadas. Confira os dados antes de baixar as planilhas! 🚨🚨🚨
         </p>
     </div>
 """, unsafe_allow_html=True)
-
-
-
-
 
 # Upload do arquivo para a RAM
 pdf_carregado = st.file_uploader("Suba a fatura escaneada em PDF", type=["pdf"])
