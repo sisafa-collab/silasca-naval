@@ -36,35 +36,34 @@ with col_logo_2:
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
-# --- 3. TÍTULOS E TEXTOS DO SISTEMA (CORRIGIDOS) ---
+# --- 3. TÍTULOS E TEXTOS DO SISTEMA (COMPACTO EM VERMELHO E CINZA) ---
 st.markdown("""
-    <div style="text-align: center; padding: 20px; border-top: 2px solid #2e6b54; margin-top: 10px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
+    <div style="text-align: center; padding: 15px; border-top: 2px solid #bc3c31; margin-top: 10px; background-color: rgba(76, 73, 85, 0.04); border-radius: 0 0 12px 12px;">
         <p style="
-            color: #2e6b54; 
+            color: #bc3c31; 
             font-weight: 900; 
-            font-size: 2rem; 
-            letter-spacing: 3px; 
+            font-size: 1.6rem; 
+            letter-spacing: 2px; 
             line-height: 1.2;
-            text-shadow: 0 0 8px rgba(46, 107, 84, 0.3);
-            margin-bottom: 8px;
+            text-shadow: 0 0 6px rgba(188, 60, 49, 0.15);
+            margin-bottom: 6px;
         ">
             Analisador e Interpretador de Faturas
         </p>
         
         <p style="
             color: #4c4955; 
-            font-size: 1.15rem; 
+            font-size: 0.95rem; 
             font-weight: 700; 
             margin-top: 0;
             text-transform: uppercase;
             letter-spacing: 1px;
         ">
             Foco absoluto na leitura e interpretação de faturas escaneadas.<br>
-            <span style="color: #bc3c31;">🚨 Confira os dados antes de baixar as planilhas! 🚨</span>
+            <span style="color: #bc3c31; font-weight: 800;">🚨 Confira os dados antes de baixar as planilhas! 🚨</span>
         </p>
     </div>
 """, unsafe_allow_html=True)
-
 # Upload do arquivo para a RAM
 pdf_carregado = st.file_uploader("Suba a fatura escaneada em PDF", type=["pdf"])
 
