@@ -67,18 +67,20 @@ if pdfs_carregados:
                         texto_pagina = pytesseract.image_to_string(imagem_pagina, lang='por')
                         texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n"
                     
-                    st.info("💡 Varredura concluída. Analisando...")
+                    st.info("💡 Varredura concluída.")
                     
                     # =========================================================
-                    # 🎯 INTELIGÊNCIA DE CAPTURA: GUIA DE APRESENTAÇÃO DA MB
+                    # 🎯 INTELIGÊNCIA DE CAPTURA: GUIA DE APRESENTAÇÃO DA MB (BLINDADA)
                     # =========================================================
-                    
-                    # Divide o texto do PDF toda vez que encontra "MARINHA DO BRASIL"
-                    blocos_guia = re.split(r'(?i)MARINHA DO BRASIL', texto_completo)
-                    
-                    # Filtra apenas os blocos que parecem ser Guias (tem Titular ou Usuário)
-                    guias_validas = [b for b in blocos_guia if "TITULAR:" in b.upper() or "USUÁRIO:" in b.upper()]
-                    
+
+                    # 1. DIVISÃO FLEXÍVEL: Aceita espaços extras e procura também por "GUIA DE APRESENTAÇÃO"
+                    # Adicionamos parênteses de captura para não perder o texto divisor se precisar dele
+                    blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL|GUIA\s+DE\s+APRESENTA[CÇ][AÃ]O', texto_completo)
+
+                    # 2. FILTRO INTELIGENTE: Às vezes o OCR lê "T1TULAR" ou "USUARI0". 
+                    # Usamos um Regex mais tolerante para identificar se o bloco realmente é uma guia.
+                    guias_validas = [b for b in blocos_guia if re.search(r'(?i)T[I1]TULAR', b) or re.search(r'(?i)USU[ÁA]RIO', b)]
+
                     if guias_validas:
                         st.markdown(f"### 📑 Identificadas {len(guias_validas)} Guia(s) de Apresentação")
                         
@@ -86,34 +88,54 @@ if pdfs_carregados:
                             with st.container(border=True):
                                 st.markdown(f"**GUIA #{i}**")
                                 
-                                # 1. Caça o Titular (NIP e Nome)
-                                match_titular = re.search(r'(?i)Titular:\s*([\d\.\-]+)\s+(.+)', guia)
-                                nip_titular = match_titular.group(1).strip() if match_titular else "N/A"
-                                nome_titular = match_titular.group(2).strip() if match_titular else "Não identificado"
+                                # ---------------------------------------------------------
+                                # 1. CAÇA O TITULAR (Tolerante a ausência do NIP e quebras de linha)
+                                # Lê: "Titular" -> pega o NIP (se tiver) -> pega o Nome até o fim da linha
+                                # ---------------------------------------------------------
+                                match_titular = re.search(r'(?i)T[i1]tular[\s:]*([\d\.\-]+)?\s*([^\n]+)', guia)
                                 
-                                # 2. Caça o Usuário (Relação e Nome)
-                                match_usuario = re.search(r'(?i)Usu[aá]rio:\s*([A-ZÀ-Úa-zà-ú\(\)]+)\s*[-–]\s*(.+)', guia)
-                                relacao_usu = match_usuario.group(1).strip() if match_usuario else "N/A"
-                                nome_usu = match_usuario.group(2).strip() if match_usuario else "Não identificado"
+                                nip_titular = match_titular.group(1).strip() if match_titular and match_titular.group(1) else "N/A"
+                                nome_titular = match_titular.group(2).strip() if match_titular and match_titular.group(2) else "Não identificado"
                                 
+                                # Limpa lixos comuns do OCR no final do nome
+                                nome_titular = re.sub(r'[-_:\.\s]+$', '', nome_titular)
+
+                                # ---------------------------------------------------------
+                                # 2. CAÇA O USUÁRIO (Tolerante a espaços na relação, ex: "FILHO (A)")
+                                # ---------------------------------------------------------
+                                # Busca relação (pode ter espaços) até encontrar um traço ou dois pontos, depois pega o Nome
+                                match_usuario = re.search(r'(?i)Usu[aá]rio[\s:]*([A-Za-zÀ-Úà-ú\s\(\)]+?)[\s\-–:]+([^\n]+)', guia)
+                                
+                                if match_usuario:
+                                    relacao_usu = match_usuario.group(1).strip()
+                                    nome_usu = match_usuario.group(2).strip()
+                                else:
+                                    # Plano B: Se não achar a "relação" com traço, tenta pegar só o nome na frente
+                                    match_usu_fallback = re.search(r'(?i)Usu[aá]rio[\s:]*([^\n]+)', guia)
+                                    relacao_usu = "N/A"
+                                    nome_usu = match_usu_fallback.group(1).strip() if match_usu_fallback else "Não identificado"
+                                
+                                nome_usu = re.sub(r'[-_:\.\s]+$', '', nome_usu)
+
+                                # --- Exibe os Dados Pessoais ---
                                 col1, col2 = st.columns(2)
                                 col1.write(f"🛡️ **Titular:** {nome_titular} \n\n**NIP:** `{nip_titular}`")
                                 col2.write(f"👤 **Usuário:** {nome_usu} \n\n**Relação:** `{relacao_usu}`")
                                 
-                                # 3. Caça os Procedimentos (Padrão de 8 dígitos da tabela médica + Texto)
-                                # Ex: "40808122 USG - OBSTETRICA"
-                                procedimentos = re.findall(r'\b(\d{8})\b\s*[-–]?\s*(.+)', guia)
+                                # ---------------------------------------------------------
+                                # 3. CAÇA OS PROCEDIMENTOS (Tolerante a símbolos estranhos separando os códigos)
+                                # ---------------------------------------------------------
+                                # Procura exatos 8 dígitos, ignora espaços/traços/pontos, e captura o nome do procedimento
+                                procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–]*([^\n\r]+)', guia)
                                 
                                 if procedimentos:
-                                    st.markdown("**🔬 Procedimentos / Exames (Motivo do Encaminhamento):**")
-                                    for proc in procedimentos:
-                                        codigo = proc[0]
-                                        descricao = proc[1].strip()
-                                        st.code(f"[{codigo}] {descricao}", language="text")
+                                    st.markdown("**🩺 Procedimentos Identificados:**")
+                                    for cod, desc in procedimentos:
+                                        # Limpa espaços extras ou hifens perdidos na descrição
+                                        desc_limpa = desc.strip(" -_.")
+                                        st.caption(f"🔹 `{cod}` - {desc_limpa}")
                                 else:
-                                    st.warning("⚠️ Códigos de procedimento não identificados com clareza nesta guia.")
-                    else:
-                        st.warning("Nenhuma Guia de Apresentação padrão MB foi detectada neste PDF específico.")
+                                    st.caption("⚠️ *Nenhum código CBHPM/TUSS de 8 dígitos localizado nesta guia.*")
                     
                     st.divider() # Separa as guias das ferramentas brutas
                     
