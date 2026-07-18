@@ -70,10 +70,10 @@ if pdfs_carregados:
                     st.info("💡 Varredura concluída.")
 
                     # =========================================================
-                    # 🎯 SISAFA NAVAL v4: EXTRAÇÃO ZONAL (BASEADO NO LAYOUT FÍSICO DA GUIA)
+                    # 🎯 SISAFA NAVAL v5: EXTRAÇÃO ZONAL COM SUBTRAÇÃO DE RUÍDO
                     # =========================================================
 
-                    # 1. CORTA O PDF EM GUIAS
+                    # 1. CORTA O PDF EM GUIAS (Âncora principal inquebrável)
                     blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL', texto_completo)
 
                     # Filtra apenas blocos que possuam a seção "DADOS DO USUÁRIO"
@@ -86,36 +86,49 @@ if pdfs_carregados:
                             with st.container(border=True):
                                 st.markdown(f"**GUIA #{i}**")
                                 
-                                # Variáveis em branco
+                                # Variáveis padrão de segurança
                                 nome_usu, nip_usu, vinculo_usu, tipo_usu = "N/A", "N/A", "N/A", "N/A"
                                 
                                 # =========================================================
-                                # ZONA 1: DADOS DO USUÁRIO
-                                # Captura tudo entre "DADOS DO USUÁRIO" e a próxima grande seção
+                                # ZONA 1: DADOS DO USUÁRIO (ESTRATÉGIA DE SUBTRAÇÃO)
                                 # =========================================================
                                 bloco_usuario = re.search(r'(?i)DADOS\s+DO\s+USU[ÁA]RIO(.*?)(?=DADOS\s+DO\s+ENCAMINHAMENTO|MOTIVO\s+DO\s+ENCAMINHAMENTO|$)', guia, re.DOTALL)
                                 
                                 if bloco_usuario:
-                                    txt_usr = bloco_usuario.group(1) # Aqui dentro só tem lixo e dados do usuário
+                                    txt_usr = bloco_usuario.group(1)
                                     
-                                    # Caça NIP (Exatos 8 dígitos após a palavra NIP, ignorando quebras de linha e espaços)
-                                    match_nip = re.search(r'(?i)NIP[\s:\|]*([\d]{8})', txt_usr)
-                                    if match_nip: nip_usu = match_nip.group(1)
+                                    # 1º PASSO: Achata tudo para uma única linha (Mata o problema das colunas quebradas do Tesseract)
+                                    txt_usr_linha = re.sub(r'\s+', ' ', txt_usr)
                                     
-                                    # Caça Vínculo (Busca explicitamente TITULAR ou DEPENDENTE)
-                                    match_vinc = re.search(r'(?i)(TITULAR|DEPENDENTE)', txt_usr)
+                                    # 2º PASSO: Caça Direta Inconfundível
+                                    # Caça NIP (Qualquer sequência exata de 8 dígitos isolada)
+                                    match_nip = re.search(r'\b\d{8}\b', txt_usr_linha)
+                                    if match_nip: nip_usu = match_nip.group(0)
+                                        
+                                    # Caça Vínculo
+                                    match_vinc = re.search(r'(?i)\b(TITULAR|DEPENDENTE)\b', txt_usr_linha)
                                     if match_vinc: vinculo_usu = match_vinc.group(1).upper()
-                                    
-                                    # Caça Tipo (Busca DIRETO ou INDIRETO)
-                                    match_tipo = re.search(r'(?i)(DIRETO|INDIRETO)', txt_usr)
+                                        
+                                    # Caça Tipo
+                                    match_tipo = re.search(r'(?i)\b(DIRETO|INDIRETO)\b', txt_usr_linha)
                                     if match_tipo: tipo_usu = match_tipo.group(1).upper()
+                                        
+                                    # 3º PASSO: Caça Nome por Subtração de Rótulos
+                                    # Removemos todas as "etiquetas" que o OCR lê do grid. 
+                                    ruido_labels = r'(?i)\b(NOME SOCIAL|NOME|NIP|POSTO|V[ÍI]NCULO|TIPO|TITULAR|DEPENDENTE|DIRETO|INDIRETO|DADOS DO USU[ÁA]RIO)\b'
+                                    txt_sem_labels = re.sub(ruido_labels, '', txt_usr_linha)
                                     
-                                    # Caça Nome (Pega tudo entre "Nome:" e a próxima palavra-chave "NIP" ou "Posto" ou "Vínculo")
-                                    # O \s* limpa os espaços invisíveis nas bordas
-                                    match_nome = re.search(r'(?i)Nome[\s:\|]+(.*?)(?=\s+NIP|\s+Posto|\s+V[íi]nculo|\n)', txt_usr, re.IGNORECASE)
-                                    if match_nome: 
-                                        # Limpa traços e restos do OCR
-                                        nome_usu = re.sub(r'[_\|]+', '', match_nome.group(1)).strip()
+                                    # Removemos também o NIP que já guardamos, para que não suje o nome
+                                    if nip_usu != "N/A":
+                                        txt_sem_labels = txt_sem_labels.replace(nip_usu, '')
+                                    
+                                    # O que restou é o nome sujo com caracteres estranhos do grid (| , _ , :). Limpamos mantendo apenas letras.
+                                    nome_bruto = re.sub(r'[^A-Za-zÀ-Úà-ú\s]', ' ', txt_sem_labels)
+                                    
+                                    # Remove espaços duplos
+                                    nome_usu = re.sub(r'\s+', ' ', nome_bruto).strip()
+                                    if not nome_usu:
+                                        nome_usu = "Não identificado"
 
                                 # --- Renderização do Painel Pessoal ---
                                 col1, col2 = st.columns(2)
@@ -125,25 +138,28 @@ if pdfs_carregados:
                                 # =========================================================
                                 # ZONA 2: MOTIVO DO ENCAMINHAMENTO (PROCEDIMENTOS)
                                 # =========================================================
-                                bloco_motivo = re.search(r'(?i)MOTIVO\s+DO\s+ENCAMINHAMENTO(.*?)(?=AUTORIZA[CÇ][AÃ]O|ASSINATURA|TOTAL|$)', guia, re.DOTALL)
+                                bloco_motivo = re.search(r'(?i)MOTIVO\s+DO\s+ENCAMINHAMENTO(.*?)(?=AUTORIZA[CÇ][AÃ]O|ASSINATURA|TOTAL|VISTO|$)', guia, re.DOTALL)
                                 
                                 if bloco_motivo:
-                                    txt_mot = bloco_motivo.group(1) # Aqui dentro só tem a tabela de exames
+                                    txt_mot = bloco_motivo.group(1) 
                                     
-                                    # Procura números de 8 dígitos e o texto subsequente, apenas DENTRO deste bloco
+                                    # Procura 8 dígitos seguidos de qualquer texto
                                     procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–\|]*([^\n\r]+)', txt_mot)
                                     
                                     if procedimentos:
-                                        st.markdown("**🩺 Exames / Procedimentos:**")
+                                        st.markdown("**🩺 Exames / Procedimentos Faturados:**")
+                                        
                                         for cod, desc in procedimentos:
-                                            # Se por um milagre o OCR botou o NIP lá embaixo, a gente bloqueia
+                                            # Regra Anti-Colisão: Se o código for igual ao NIP capturado acima, ignora.
                                             if cod == nip_usu: continue 
+                                            
                                             desc_limpa = re.sub(r'[_\|]+', '', desc).strip()
-                                            st.caption(f"🔹 `{cod}` - {desc_limpa}")
+                                            if len(desc_limpa) > 2: # Evita imprimir descrições formadas só por pontos soltos
+                                                st.caption(f"🔹 `{cod}` - {desc_limpa}")
                                     else:
-                                        st.caption("⚠️ *Nenhum exame identificado nesta zona.*")
+                                        st.caption("⚠️ *Nenhum código CBHPM/TUSS identificado nesta zona.*")
                                 else:
-                                    st.caption("⚠️ *Bloco 'Motivo do Encaminhamento' não localizado.*")
+                                    st.caption("⚠️ *Bloco 'Motivo do Encaminhamento' não localizado pelo OCR.*")
                     
                     st.divider() # Separa as guias das ferramentas brutas
                     
