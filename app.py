@@ -35,11 +35,9 @@ with col_logo_2:
 # --- 3. TÍTULOS E TEXTOS DO SISTEMA (COMPACTO EM VERMELHO E CINZA) ---
 st.markdown("""
 <div style="text-align: center; padding: 15px; border-top: 2px solid #bc3c31; margin-top: 10px; background-color: rgba(76, 73, 85, 0.04); border-radius: 0 0 12px 12px;">
-    <p style="color: #bc3c31; font-weight: 600; font-size: 1.6rem; letter-spacing: 2px; line-height: 1.2; text-shadow: 0 0 6px rgba(188, 60, 49, 0.15); margin-bottom: 6px;">
-        Analisador e Interpretador de Faturas
+    <p style="color: #bc3c31; font-weight: 900; font-size: 1.6rem; letter-spacing: 2px; line-height: 1.2; text-shadow: 0 0 6px rgba(188, 60, 49, 0.15); margin-bottom: 6px;">
+        Analisador e Interpretador de Faturas, com foco na leitura e interpretação de documentos escaneados 📜📜
     </p>
-    <p style="color: #4c4955; font-size: 0.95rem; font-weight: 300; margin-top: 0; text-transform: uppercase; letter-spacing: 1px;">
-        Foco absoluto na leitura e interpretação de faturas escaneadas.<br>
         <span style="color: #bc3c31; font-weight: 800;">🚨 Confira os dados antes de baixar as planilhas! 🚨</span>
     </p>
 </div>
