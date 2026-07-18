@@ -24,7 +24,7 @@ if os.path.exists("slogan.png"):
 
 # --- 2. LOGO CENTRALIZADO NO TOPO (AGORA MAIOR) ---
 # Mudamos a calibração das colunas [1, 1.2, 1] para expandir o tamanho do logo central
-col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 1.2, 1]) 
+col_logo_1, col_logo_2, col_logo_3 = st.columns([0.5, 2, 0.5]) 
 
 with col_logo_2:
     if os.path.exists("LOGO_SILASCA.png"):
