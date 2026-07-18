@@ -11,19 +11,24 @@ import streamlit as st
 # ⚓ SEÇÃO VISUAL E IDENTIDADE (TOPO CENTRALIZADO & SLOGAN FIXO)
 # =================================================================
 
-# --- 1. SLOGAN FIXO NO CANTO INFERIOR DIREITO  ---
+# =================================================================
+# ⚓ SEÇÃO VISUAL E IDENTIDADE (TOPO CENTRALIZADO & SLOGAN FIXO)
+# =================================================================
+
+# --- 1. SLOGAN FIXO NO CANTO INFERIOR DIREITO (AGORA MAIOR) ---
 if os.path.exists("slogan.png"):
     with open("slogan.png", "rb") as f:
         data_slogan = base64.b64encode(f.read()).decode()
-        # Injeta o slogan fixado no canto inferior direito (largura elegante de 220px)
+        # Ampliado de 220px para 300px para máxima legibilidade no canto da tela
         st.markdown(
             f'<img src="data:image/png;base64,{data_slogan}" '
-            f'style="position: fixed; bottom: 20px; right: 20px; width: 220px; z-index: 9999;">', 
+            f'style="position: fixed; bottom: 20px; right: 20px; width: 300px; z-index: 9999;">', 
             unsafe_allow_html=True
         )
 
-# --- 2. LOGO CENTRALIZADO NO TOPO ---
-col_logo_1, col_logo_2, col_logo_3 = st.columns([1.5, 1, 1.5]) 
+# --- 2. LOGO CENTRALIZADO NO TOPO (AGORA MAIOR) ---
+# Mudamos a calibração das colunas [1, 1.2, 1] para expandir o tamanho do logo central
+col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 1.2, 1]) 
 
 with col_logo_2:
     if os.path.exists("LOGO_SILASCA.png"):
@@ -31,30 +36,31 @@ with col_logo_2:
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
-# --- 2. TÍTULOS E TEXTOS DO SISTEMA (UNIFICADOS E COMPACTOS) ---
+# --- 3. TÍTULOS E TEXTOS DO SISTEMA (CORRIGIDOS) ---
 st.markdown("""
     <div style="text-align: center; padding: 20px; border-top: 2px solid #2e6b54; margin-top: 10px; background-color: rgba(46, 107, 84, 0.05); border-radius: 0 0 15px 15px;">
         <p style="
-            color: #bc3c31; 
+            color: #2e6b54; 
             font-weight: 900; 
-            font-size: 1.8rem; 
+            font-size: 2rem; 
             letter-spacing: 3px; 
             line-height: 1.2;
-            text-shadow: 0 0 10px #2e6b54, 0 0 20px #2e6b54, 0 0 30px #2e6b54;
-            margin-bottom: 5px;
+            text-shadow: 0 0 8px rgba(46, 107, 84, 0.3);
+            margin-bottom: 8px;
         ">
             Analisador e Interpretador de Faturas
         </p>
         
         <p style="
-            color: 4c4955; 
-            font-size: 1.1rem; 
+            color: #4c4955; 
+            font-size: 1.15rem; 
             font-weight: 700; 
             margin-top: 0;
             text-transform: uppercase;
             letter-spacing: 1px;
         ">
-            Foco absoluto na leitura e interpretação de faturas escaneadas. Confira os dados antes de baixar as planilhas! 🚨🚨🚨
+            Foco absoluto na leitura e interpretação de faturas escaneadas.<br>
+            <span style="color: #bc3c31;">🚨 Confira os dados antes de baixar as planilhas! 🚨</span>
         </p>
     </div>
 """, unsafe_allow_html=True)
