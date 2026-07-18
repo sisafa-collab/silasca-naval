@@ -68,17 +68,15 @@ if pdfs_carregados:
                         texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n"
                     
                     st.info("💡 Varredura concluída.")
-                    
+
                     # =========================================================
-                    # 🎯 INTELIGÊNCIA DE CAPTURA: GUIA DE APRESENTAÇÃO DA MB (BLINDADA)
+                    # 🎯 INTELIGÊNCIA DE CAPTURA ANCORADA: SISAFA NAVAL v2
                     # =========================================================
 
-                    # 1. DIVISÃO FLEXÍVEL: Aceita espaços extras e procura também por "GUIA DE APRESENTAÇÃO"
-                    # Adicionamos parênteses de captura para não perder o texto divisor se precisar dele
+                    # Quebra flexível aceitando variações de espaços no divisor principal das OSEs
                     blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL|GUIA\s+DE\s+APRESENTA[CÇ][AÃ]O', texto_completo)
 
-                    # 2. FILTRO INTELIGENTE: Às vezes o OCR lê "T1TULAR" ou "USUARI0". 
-                    # Usamos um Regex mais tolerante para identificar se o bloco realmente é uma guia.
+                    # Filtro inicial de blocos válidos
                     guias_validas = [b for b in blocos_guia if re.search(r'(?i)T[I1]TULAR', b) or re.search(r'(?i)USU[ÁA]RIO', b)]
 
                     if guias_validas:
@@ -89,53 +87,71 @@ if pdfs_carregados:
                                 st.markdown(f"**GUIA #{i}**")
                                 
                                 # ---------------------------------------------------------
-                                # 1. CAÇA O TITULAR (Tolerante a ausência do NIP e quebras de linha)
-                                # Lê: "Titular" -> pega o NIP (se tiver) -> pega o Nome até o fim da linha
+                                # 1. CAPTURA DO TITULAR: ÂNCORA RÍGIDA PARA O NIP
                                 # ---------------------------------------------------------
+                                # Procura a palavra 'Titular', opcionalmente busca o padrão numérico colado nela, e isola o resto da linha
                                 match_titular = re.search(r'(?i)T[i1]tular[\s:]*([\d\.\-]+)?\s*([^\n]+)', guia)
                                 
-                                nip_titular = match_titular.group(1).strip() if match_titular and match_titular.group(1) else "N/A"
-                                nome_titular = match_titular.group(2).strip() if match_titular and match_titular.group(2) else "Não identificado"
+                                nip_titular = "N/A"
+                                nome_titular = "Não identificado"
                                 
-                                # Limpa lixos comuns do OCR no final do nome
-                                nome_titular = re.sub(r'[-_:\.\s]+$', '', nome_titular)
+                                if match_titular:
+                                    raw_nip = match_titular.group(1)
+                                    raw_nome = match_titular.group(2)
+                                    
+                                    # Tratamento do NIP: Remove pontos/hifens para validação limpa
+                                    if raw_nip:
+                                        nip_limpo = re.sub(r'[\.\-]', '', raw_nip).strip()
+                                        if len(nip_limpo) == 8:
+                                            nip_titular = nip_limpo
+                                    
+                                    if raw_nome:
+                                        nome_titular = raw_nome.strip(" -_.:")
 
                                 # ---------------------------------------------------------
-                                # 2. CAÇA O USUÁRIO (Tolerante a espaços na relação, ex: "FILHO (A)")
+                                # 2. CAPTURA DO USUÁRIO: ISOLAMENTO POR QUEBRA DE LINHA
                                 # ---------------------------------------------------------
-                                # Busca relação (pode ter espaços) até encontrar um traço ou dois pontos, depois pega o Nome
+                                # Captura a relação (Ex: FILHO, CONJUGE) e o Nome, limitando-se estritamente à linha do Usuário
                                 match_usuario = re.search(r'(?i)Usu[aá]rio[\s:]*([A-Za-zÀ-Úà-ú\s\(\)]+?)[\s\-–:]+([^\n]+)', guia)
                                 
                                 if match_usuario:
-                                    relacao_usu = match_usuario.group(1).strip()
-                                    nome_usu = match_usuario.group(2).strip()
+                                    relacao_usu = match_usuario.group(1).strip(" -_.:")
+                                    nome_usu = match_usuario.group(2).strip(" -_.:")
                                 else:
-                                    # Plano B: Se não achar a "relação" com traço, tenta pegar só o nome na frente
+                                    # Fallback caso a relação não use hifen/separador padrão do OCR
                                     match_usu_fallback = re.search(r'(?i)Usu[aá]rio[\s:]*([^\n]+)', guia)
                                     relacao_usu = "N/A"
-                                    nome_usu = match_usu_fallback.group(1).strip() if match_usu_fallback else "Não identificado"
-                                
-                                nome_usu = re.sub(r'[-_:\.\s]+$', '', nome_usu)
+                                    nome_usu = match_usu_fallback.group(1).strip(" -_.:") if match_usu_fallback else "Não identificado"
 
-                                # --- Exibe os Dados Pessoais ---
+                                # Painel Visual de Identificação Militar
                                 col1, col2 = st.columns(2)
                                 col1.write(f"🛡️ **Titular:** {nome_titular} \n\n**NIP:** `{nip_titular}`")
                                 col2.write(f"👤 **Usuário:** {nome_usu} \n\n**Relação:** `{relacao_usu}`")
                                 
                                 # ---------------------------------------------------------
-                                # 3. CAÇA OS PROCEDIMENTOS (Tolerante a símbolos estranhos separando os códigos)
+                                # 3. CAPTURA DE PROCEDIMENTOS: ANTI-COLISÃO DE NIP
                                 # ---------------------------------------------------------
-                                # Procura exatos 8 dígitos, ignora espaços/traços/pontos, e captura o nome do procedimento
-                                procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–]*([^\n\r]+)', guia)
+                                # Captura todos os códigos de 8 dígitos seguidos por descrição
+                                todos_procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–]*([^\n\r]+)', guia)
                                 
-                                if procedimentos:
-                                    st.markdown("**🩺 Procedimentos Identificados:**")
-                                    for cod, desc in procedimentos:
-                                        # Limpa espaços extras ou hifens perdidos na descrição
-                                        desc_limpa = desc.strip(" -_.")
+                                procedimentos_filtrados = []
+                                for cod, desc in todos_procedimentos:
+                                    # ESTRATÉGIA ANTI-COLISÃO: Se o código de 8 dígitos localizado for IGUAL ao NIP do titular,
+                                    # ou se a descrição contiver palavras de cadastro (como "Titular" ou "Usuário"), desconsidera!
+                                    if cod == nip_titular:
+                                        continue
+                                    if re.search(r'(?i)titular|usu[áa]rio|marinha|relação', desc):
+                                        continue
+                                        
+                                    procedimentos_filtrados.append((cod, desc.strip(" -_.")))
+                                
+                                # Renderização na Interface
+                                if procedimentos_filtrados:
+                                    st.markdown("**🩺 Procedimentos Clínicos Identificados:**")
+                                    for cod, desc_limpa in procedimentos_filtrados:
                                         st.caption(f"🔹 `{cod}` - {desc_limpa}")
                                 else:
-                                    st.caption("⚠️ *Nenhum código CBHPM/TUSS de 8 dígitos localizado nesta guia.*")
+                                    st.caption("⚠️ *Nenhum procedimento médico faturado nesta seção.*")
                     
                     st.divider() # Separa as guias das ferramentas brutas
                     
