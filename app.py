@@ -70,14 +70,14 @@ if pdfs_carregados:
                     st.info("💡 Varredura concluída.")
 
                     # =========================================================
-                    # 🎯 INTELIGÊNCIA DE CAPTURA ANCORADA: SISAFA NAVAL v2
+                    # 🎯 INTELIGÊNCIA DE CAPTURA ANCORADA: SISAFA NAVAL v3
                     # =========================================================
 
-                    # Quebra flexível aceitando variações de espaços no divisor principal das OSEs
-                    blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL|GUIA\s+DE\s+APRESENTA[CÇ][AÃ]O', texto_completo)
+                    # 1. DIVISÃO PRECISA: Voltamos à âncora principal (sem estilhaçar o cabeçalho)
+                    blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL', texto_completo)
 
-                    # Filtro inicial de blocos válidos
-                    guias_validas = [b for b in blocos_guia if re.search(r'(?i)T[I1]TULAR', b) or re.search(r'(?i)USU[ÁA]RIO', b)]
+                    # Filtra apenas os blocos que parecem ser Guias
+                    guias_validas = [b for b in blocos_guia if re.search(r'(?i)T[i1]tular|Usu[aá]rio', b)]
 
                     if guias_validas:
                         st.markdown(f"### 📑 Identificadas {len(guias_validas)} Guia(s) de Apresentação")
@@ -86,66 +86,79 @@ if pdfs_carregados:
                             with st.container(border=True):
                                 st.markdown(f"**GUIA #{i}**")
                                 
-                                # ---------------------------------------------------------
-                                # 1. CAPTURA DO TITULAR: ÂNCORA RÍGIDA PARA O NIP
-                                # ---------------------------------------------------------
-                                # Procura a palavra 'Titular', opcionalmente busca o padrão numérico colado nela, e isola o resto da linha
-                                match_titular = re.search(r'(?i)T[i1]tular[\s:]*([\d\.\-]+)?\s*([^\n]+)', guia)
-                                
+                                # Variáveis padrão de segurança
                                 nip_titular = "N/A"
                                 nome_titular = "Não identificado"
+                                relacao_usu = "N/A"
+                                nome_usu = "Não identificado"
+                                
+                                # ---------------------------------------------------------
+                                # 1. CAÇA O TITULAR (Captura a linha toda e trata os dados)
+                                # ---------------------------------------------------------
+                                # Pega tudo na mesma linha logo após a palavra "Titular:"
+                                match_titular = re.search(r'(?i)T[i1]tular[\s:]*([^\n]+)', guia)
                                 
                                 if match_titular:
-                                    raw_nip = match_titular.group(1)
-                                    raw_nome = match_titular.group(2)
+                                    linha_titular = match_titular.group(1).strip()
                                     
-                                    # Tratamento do NIP: Remove pontos/hifens para validação limpa
-                                    if raw_nip:
-                                        nip_limpo = re.sub(r'[\.\-]', '', raw_nip).strip()
-                                        if len(nip_limpo) == 8:
-                                            nip_titular = nip_limpo
-                                    
-                                    if raw_nome:
-                                        nome_titular = raw_nome.strip(" -_.:")
+                                    # Procura o NIP (pelo menos 8 digitos numéricos colados) no início da linha
+                                    match_nip = re.match(r'^([\d\.\-]{8,12})\s+(.+)', linha_titular)
+                                    if match_nip:
+                                        raw_nip = match_nip.group(1)
+                                        nome_titular = match_nip.group(2).strip(" -_.:")
+                                        # Limpa pontos e traços para o NIP ficar perfeito
+                                        nip_titular = re.sub(r'[\.\-]', '', raw_nip).strip()
+                                    else:
+                                        # Se não vier o NIP, salva a linha inteira como nome
+                                        nome_titular = linha_titular.strip(" -_.:")
 
                                 # ---------------------------------------------------------
-                                # 2. CAPTURA DO USUÁRIO: ISOLAMENTO POR QUEBRA DE LINHA
+                                # 2. CAÇA O USUÁRIO (Captura a linha toda e divide pelo traço)
                                 # ---------------------------------------------------------
-                                # Captura a relação (Ex: FILHO, CONJUGE) e o Nome, limitando-se estritamente à linha do Usuário
-                                match_usuario = re.search(r'(?i)Usu[aá]rio[\s:]*([A-Za-zÀ-Úà-ú\s\(\)]+?)[\s\-–:]+([^\n]+)', guia)
+                                match_usuario = re.search(r'(?i)Usu[aá]rio[\s:]*([^\n]+)', guia)
                                 
                                 if match_usuario:
-                                    relacao_usu = match_usuario.group(1).strip(" -_.:")
-                                    nome_usu = match_usuario.group(2).strip(" -_.:")
-                                else:
-                                    # Fallback caso a relação não use hifen/separador padrão do OCR
-                                    match_usu_fallback = re.search(r'(?i)Usu[aá]rio[\s:]*([^\n]+)', guia)
-                                    relacao_usu = "N/A"
-                                    nome_usu = match_usu_fallback.group(1).strip(" -_.:") if match_usu_fallback else "Não identificado"
+                                    linha_usuario = match_usuario.group(1).strip()
+                                    
+                                    # Se o OCR leu o traço separando a Relação do Nome (Ex: FILHO(A) - JOÃO)
+                                    if re.search(r'[-–]', linha_usuario):
+                                        partes = re.split(r'[-–]', linha_usuario, maxsplit=1)
+                                        relacao_usu = partes[0].strip(" -_.:")
+                                        nome_usu = partes[1].strip(" -_.:")
+                                    else:
+                                        # Se faltou o traço, separa a primeira palavra como Relação e o resto como Nome
+                                        match_relacao = re.match(r'^([A-ZÀ-Úa-zà-ú\(\)]+)\s+(.+)', linha_usuario)
+                                        if match_relacao:
+                                            relacao_usu = match_relacao.group(1).strip()
+                                            nome_usu = match_relacao.group(2).strip(" -_.:")
+                                        else:
+                                            nome_usu = linha_usuario.strip(" -_.:")
 
-                                # Painel Visual de Identificação Militar
+                                # --- Painel de Renderização Pessoal ---
                                 col1, col2 = st.columns(2)
                                 col1.write(f"🛡️ **Titular:** {nome_titular} \n\n**NIP:** `{nip_titular}`")
                                 col2.write(f"👤 **Usuário:** {nome_usu} \n\n**Relação:** `{relacao_usu}`")
                                 
                                 # ---------------------------------------------------------
-                                # 3. CAPTURA DE PROCEDIMENTOS: ANTI-COLISÃO DE NIP
+                                # 3. CAÇA PROCEDIMENTOS: BLINDAGEM ANTI-COLISÃO (Ignora o NIP)
                                 # ---------------------------------------------------------
-                                # Captura todos os códigos de 8 dígitos seguidos por descrição
                                 todos_procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–]*([^\n\r]+)', guia)
                                 
                                 procedimentos_filtrados = []
                                 for cod, desc in todos_procedimentos:
-                                    # ESTRATÉGIA ANTI-COLISÃO: Se o código de 8 dígitos localizado for IGUAL ao NIP do titular,
-                                    # ou se a descrição contiver palavras de cadastro (como "Titular" ou "Usuário"), desconsidera!
+                                    desc_limpa = desc.strip(" -_.:")
+                                    
+                                    # Regra de Ouro: Se o código for igual ao NIP, é falso positivo!
                                     if cod == nip_titular:
                                         continue
-                                    if re.search(r'(?i)titular|usu[áa]rio|marinha|relação', desc):
+                                        
+                                    # Regra de Lixo: Se a descrição tiver palavras soltas do cabeçalho, ignora!
+                                    if re.search(r'(?i)^(titular|usu[aá]rio|marinha|guia|apresenta[cç][aã]o|nip|dados)', desc_limpa):
                                         continue
                                         
-                                    procedimentos_filtrados.append((cod, desc.strip(" -_.")))
+                                    procedimentos_filtrados.append((cod, desc_limpa))
                                 
-                                # Renderização na Interface
+                                # --- Painel de Renderização Médica ---
                                 if procedimentos_filtrados:
                                     st.markdown("**🩺 Procedimentos Clínicos Identificados:**")
                                     for cod, desc_limpa in procedimentos_filtrados:
