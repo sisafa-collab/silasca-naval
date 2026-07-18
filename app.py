@@ -18,7 +18,7 @@ if os.path.exists("slogan.png"):
         # Ampliado de 220px para 300px para máxima legibilidade no canto da tela
         st.markdown(
             f'<img src="data:image/png;base64,{data_slogan}" '
-            f'style="position: fixed; bottom: 20px; right: 20px; width: 300px; z-index: 9999;">', 
+            f'style="position: fixed; bottom: 20px; right: 20px; width: 500px; z-index: 9999;">', 
             unsafe_allow_html=True
         )
 
