@@ -43,82 +43,112 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Upload do arquivo para a RAM
-pdf_carregado = st.file_uploader("Suba a fatura escaneada em PDF", type=["pdf"])
+# --- 4. ÁREA TÉCNICA: PROCESSADOR OCR E INTELIGÊNCIA ---
 
-if pdf_carregado is not None:
-    st.success("PDF carregado com sucesso na memória!")
+# accept_multiple_files=True permite jogar vários PDFs de uma vez!
+pdfs_carregados = st.file_uploader("Suba as faturas escaneadas em PDF", type=["pdf"], accept_multiple_files=True)
+
+if pdfs_carregados:
+    st.success(f"⚓ {len(pdfs_carregados)} documento(s) carregado(s) no passadiço!")
     
-    with st.spinner("Convertendo páginas e executando leitura por OCR..."):
-        try:
-            # 1. Converte os bytes do PDF em imagens na memória
-            pdf_bytes = pdf_carregado.read()
-            paginas = convert_from_bytes(pdf_bytes)
-            num_paginas = len(paginas)
+    # Processa cada PDF individualmente
+    for pdf_carregado in pdfs_carregados:
+        
+        # Cria o "Box" expansível para cada arquivo
+        with st.expander(f"📂 Inspeção do Arquivo: {pdf_carregado.name}", expanded=False):
             
-            # Unifica o texto extraído de todas as páginas
-            texto_completo = ""
-            for idx, imagem_pagina in enumerate(paginas):
-                texto_pagina = pytesseract.image_to_string(imagem_pagina, lang='por')
-                texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n--- FIM DA PÁGINA {idx + 1} ---\n"
-            
-            st.info("💡 Processamento concluído. Use as ferramentas abaixo para interpretar a fatura.")
-            
-            # --- PAINEL DE ANÁLISE INTERATIVA ---
-            aba_bruta, aba_filtros = st.tabs(["📄 Texto Bruto Completo", "🔍 Buscador e Capturador Inteligente"])
-            
-            # ABA 1: TEXTO BRUTO DO DOCUMENTO (Cabeçalhos, tabelas quebradas, parágrafos)
-            with aba_bruta:
-                st.subheader("Visualização Integral do Documento")
-                st.write("Aqui está o texto exatamente na ordem física em que o OCR conseguiu ler:")
-                st.text_area(
-                    label="Conteúdo extraído", 
-                    value=texto_completo, 
-                    height=500,
-                    key="texto_bruto_fatura"
-                )
-                
-            # ABA 2: BUSCADOR E CAPTURADOR (Para interpretar dados soltos)
-            with aba_filtros:
-                st.subheader("Interpretação e Filtro de Informações")
-                st.write("Filtre o texto bruto para localizar termos cruciais sem precisar varrer o documento inteiro com os olhos.")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("#### 🎯 Captura Automática de Padrões")
+            with st.spinner(f"Executando varredura OCR em {pdf_carregado.name}..."):
+                try:
+                    pdf_bytes = pdf_carregado.read()
+                    paginas = convert_from_bytes(pdf_bytes)
                     
-                    # Capturador de NIP/CPF
-                    nips_ou_cpfs = re.findall(r"\b(?:\d{2}\.\d{4}\.\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{8}|\d{11})\b", texto_completo)
-                    if nips_ou_cpfs:
-                        st.success(f"Identificadores localizados ({len(nips_ou_cpfs)}):")
-                        st.write(list(set(nips_ou_cpfs))) # Remove duplicatas na exibição
-                    else:
-                        st.warning("Nenhum padrão de NIP ou CPF foi identificado automaticamente.")
-                        
-                    # Capturador de Valores Monetários
-                    valores = re.findall(r"(?:R\$\s*)?\b\d{1,3}(?:\.\d{3})*,\d{2}\b", texto_completo, re.IGNORECASE)
-                    if valores:
-                        st.success(f"Valores em Reais localizados ({len(valores)}):")
-                        st.write(list(set(valores)))
-                    else:
-                        st.warning("Nenhum valor no formato 'R$ XX,XX' foi identificado automaticamente.")
-                        
-                with col2:
-                    st.markdown("#### 🔎 Busca Manual por Palavra-Chave")
-                    termo_busca = st.text_input("Digite o termo que quer encontrar (ex: 'NUP', 'fatura', 'hospital', o nome de um exame...):")
+                    texto_completo = ""
+                    for idx, imagem_pagina in enumerate(paginas):
+                        texto_pagina = pytesseract.image_to_string(imagem_pagina, lang='por')
+                        texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n"
                     
-                    if termo_busca:
-                        linhas = texto_completo.split('\n')
-                        linhas_encontradas = [l.strip() for l in linhas if termo_busca.lower() in l.lower()]
+                    st.info("💡 Varredura concluída. Analisando...")
+                    
+                    # =========================================================
+                    # 🎯 INTELIGÊNCIA DE CAPTURA: GUIA DE APRESENTAÇÃO DA MB
+                    # =========================================================
+                    
+                    # Divide o texto do PDF toda vez que encontra "MARINHA DO BRASIL"
+                    blocos_guia = re.split(r'(?i)MARINHA DO BRASIL', texto_completo)
+                    
+                    # Filtra apenas os blocos que parecem ser Guias (tem Titular ou Usuário)
+                    guias_validas = [b for b in blocos_guia if "TITULAR:" in b.upper() or "USUÁRIO:" in b.upper()]
+                    
+                    if guias_validas:
+                        st.markdown(f"### 📑 Identificadas {len(guias_validas)} Guia(s) de Apresentação")
                         
-                        if linhas_encontradas:
-                            st.success(f"Encontradas {len(linhas_encontradas)} ocorrências:")
-                            for linha in linhas_encontradas:
-                                st.code(linha, language="text")
-                        else:
-                            st.warning(f"O termo '{termo_busca}' não foi encontrado no documento.")
+                        for i, guia in enumerate(guias_validas, 1):
+                            with st.container(border=True):
+                                st.markdown(f"**GUIA #{i}**")
+                                
+                                # 1. Caça o Titular (NIP e Nome)
+                                match_titular = re.search(r'(?i)Titular:\s*([\d\.\-]+)\s+(.+)', guia)
+                                nip_titular = match_titular.group(1).strip() if match_titular else "N/A"
+                                nome_titular = match_titular.group(2).strip() if match_titular else "Não identificado"
+                                
+                                # 2. Caça o Usuário (Relação e Nome)
+                                match_usuario = re.search(r'(?i)Usu[aá]rio:\s*([A-ZÀ-Úa-zà-ú\(\)]+)\s*[-–]\s*(.+)', guia)
+                                relacao_usu = match_usuario.group(1).strip() if match_usuario else "N/A"
+                                nome_usu = match_usuario.group(2).strip() if match_usuario else "Não identificado"
+                                
+                                col1, col2 = st.columns(2)
+                                col1.write(f"🛡️ **Titular:** {nome_titular} \n\n**NIP:** `{nip_titular}`")
+                                col2.write(f"👤 **Usuário:** {nome_usu} \n\n**Relação:** `{relacao_usu}`")
+                                
+                                # 3. Caça os Procedimentos (Padrão de 8 dígitos da tabela médica + Texto)
+                                # Ex: "40808122 USG - OBSTETRICA"
+                                procedimentos = re.findall(r'\b(\d{8})\b\s*[-–]?\s*(.+)', guia)
+                                
+                                if procedimentos:
+                                    st.markdown("**🔬 Procedimentos / Exames (Motivo do Encaminhamento):**")
+                                    for proc in procedimentos:
+                                        codigo = proc[0]
+                                        descricao = proc[1].strip()
+                                        st.code(f"[{codigo}] {descricao}", language="text")
+                                else:
+                                    st.warning("⚠️ Códigos de procedimento não identificados com clareza nesta guia.")
+                    else:
+                        st.warning("Nenhuma Guia de Apresentação padrão MB foi detectada neste PDF específico.")
+                    
+                    st.divider() # Separa as guias das ferramentas brutas
+                    
+                    # =========================================================
+                    # 🛠️ FERRAMENTAS GENÉRICAS (Para o resto da fatura)
+                    # =========================================================
+                    aba_bruta, aba_filtros = st.tabs(["📄 Texto Bruto Integral", "🔍 Capturador de NIPs/Valores Soltos e Busca"])
+                    
+                    with aba_bruta:
+                        st.text_area("Conteúdo extraído via OCR", value=texto_completo, height=400, key=f"txt_{pdf_carregado.name}")
+                        
+                    with aba_filtros:
+                        colA, colB = st.columns(2)
+                        with colA:
+                            st.markdown("#### 🎯 NIPs e Valores Soltos no Documento")
+                            nips = list(set(re.findall(r"\b(?:\d{2}\.\d{4}\.\d{2}|\d{8})\b", texto_completo)))
+                            if nips:
+                                st.success(f"NIPs avulsos localizados: {len(nips)}")
+                                st.write(nips)
                             
-        except Exception as e:
-            st.error(f"Erro ao ler e processar o PDF: {e}")
+                            valores = list(set(re.findall(r"(?:R\$\s*)?\b\d{1,3}(?:\.\d{3})*,\d{2}\b", texto_completo)))
+                            if valores:
+                                st.info(f"Valores avulsos localizados: {len(valores)}")
+                                st.write(valores)
+                                
+                        with colB:
+                            st.markdown("#### 🔎 Busca Manual")
+                            termo = st.text_input("Buscar termo (ex: NUP, hospital):", key=f"busc_{pdf_carregado.name}")
+                            if termo:
+                                linhas_encontradas = [l.strip() for l in texto_completo.split('\n') if termo.lower() in l.lower()]
+                                if linhas_encontradas:
+                                    st.success(f"Encontradas {len(linhas_encontradas)} ocorrências:")
+                                    for linha in linhas_encontradas:
+                                        st.code(linha, language="text")
+
+                except Exception as e:
+                    st.error(f"Erro ao processar {pdf_carregado.name}: {e}")
 
