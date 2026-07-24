@@ -111,25 +111,17 @@ if bd_file:
                     tmp.write(bd_file.read())
                     tmp_path = tmp.name
                 
-                # CORREÇÃO BLINDADA: Lê o DBF ignorando erros de codificação a nível de bytes
-                dbf_table = DBF(tmp_path, encoding='cp1252', ignore_missing_memofile=True)
+                # BLINDAGEM MÁXIMA: char_decode_errors='ignore' resolve o problema internamente na raiz
+                dbf_table = DBF(
+                    tmp_path, 
+                    encoding='cp1252', 
+                    ignore_missing_memofile=True,
+                    char_decode_errors='ignore'  # <--- O ESCUDO DEFINITIVO
+                )
                 
-                registros = []
-                for rec in dbf_table:
-                    rec_limpo = {}
-                    for k, v in rec.items():
-                        # Se o campo veio em formato de bytes com caracteres inválidos, tratamos com segurança
-                        if isinstance(v, bytes):
-                            try:
-                                rec_limpo[k] = v.decode('cp1252', errors='ignore')
-                            except Exception:
-                                rec_limpo[k] = ""
-                        else:
-                            rec_limpo[k] = v
-                    registros.append(rec_limpo)
-                
-                df_bd = pd.DataFrame(registros)
-                os.remove(tmp_path) # Limpa o rastro do arquivo temporário
+                # Como a biblioteca já tratou os erros, podemos converter direto para Pandas
+                df_bd = pd.DataFrame(iter(dbf_table))
+                os.remove(tmp_path) # Limpa o rastro logo em seguida
                 
             elif bd_file.name.lower().endswith('.xlsx'):
                 df_bd = pd.read_excel(bd_file)
