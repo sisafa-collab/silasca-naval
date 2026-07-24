@@ -106,21 +106,37 @@ if bd_file:
     with st.spinner("Lendo Banco de Dados..."):
         try:
             if bd_file.name.lower().endswith('.dbf'):
-                # Cria um arquivo temporário seguro para o DBFRead ler
+                # Cria um arquivo temporário seguro para o DBF ler
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".dbf") as tmp:
                     tmp.write(bd_file.read())
                     tmp_path = tmp.name
-                df_bd = pd.DataFrame(iter(DBF(tmp_path)))
+                
+                # CORREÇÃO: Força o encoding 'cp1252' (ou 'latin-1') para ler acentos sem travar
+                dbf_table = DBF(tmp_path, encoding='cp1252')
+                df_bd = pd.DataFrame(iter(dbf_table))
                 os.remove(tmp_path) # Limpa o rastro logo em seguida
+                
             elif bd_file.name.lower().endswith('.xlsx'):
                 df_bd = pd.read_excel(bd_file)
+                
             elif bd_file.name.lower().endswith('.csv'):
-                df_bd = pd.read_csv(bd_file, sep=None, engine='python')
+                # CORREÇÃO: Força o encoding 'latin-1' para o CSV não dar erro de codec
+                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1')
             
-            # Padroniza NIP no BD (8 dígitos limpos)
-            if 'NIP' in df_bd.columns:
-                df_bd['NIP'] = df_bd['NIP'].astype(str).str.strip().str.zfill(8)
+            # Padroniza NIP no BD (8 dígitos limpos) se a coluna existir
+            if df_bd is not None and not df_bd.empty:
+                # Remove espaços dos nomes das colunas para evitar erros de busca
+                df_bd.columns = df_bd.columns.astype(str).str.strip()
+                
+                # Procura flexível pela coluna NIP
+                col_nip = next((col for col in df_bd.columns if col.lower() in ['nip', 'c_nip']), None)
+                if col_nip:
+                    if col_nip != 'NIP':
+                        df_bd.rename(columns={col_nip: 'NIP'}, inplace=True)
+                    df_bd['NIP'] = df_bd['NIP'].astype(str).str.strip().str.zfill(8)
+                    
             st.success("✅ Banco de Dados carregado na memória com sucesso!")
+            
         except Exception as e:
             st.error(f"Erro ao processar o BD: {e}")
 
