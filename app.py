@@ -50,31 +50,51 @@ st.markdown("""
 @st.cache_data
 def carregar_tabela_referencia():
     # Tenta carregar XLSX ou CSV de forma inteligente direto do GitHub
-    if os.path.exists("CISSFA-2022-2023-2024.xlsx"):
+    arquivo_xlsx = "CISSFA-2022-2023-2024.xlsx"
+    arquivo_csv = "CISSFA-2022-2023-2024.csv"
+    
+    df_ref = None
+    
+    if os.path.exists(arquivo_xlsx):
         try:
-            df_ref = pd.read_excel("CISSFA-2022-2023-2024.xlsx")
-            df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
-            return df_ref
+            df_ref = pd.read_excel(arquivo_xlsx)
         except Exception as e:
-            st.error(f"Erro ao ler XLSX: {e}")
+            st.error(f"Erro técnico ao abrir o XLSX: {e}")
             return None
             
-    elif os.path.exists("CISSFA-2022-2023-2024.csv"):
+    elif os.path.exists(arquivo_csv):
         try:
-            df_ref = pd.read_csv("CISSFA-2022-2023-2024.csv", sep=None, engine='python')
-            df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
-            return df_ref
+            df_ref = pd.read_csv(arquivo_csv, sep=None, engine='python')
         except Exception as e:
-            st.error(f"Erro ao ler CSV: {e}")
+            st.error(f"Erro técnico ao abrir o CSV: {e}")
             return None
     else:
+        st.error("❌ Arquivo CISSFA não encontrado no servidor! Verifique se ele está na raiz do GitHub.")
         return None
+
+    if df_ref is not None:
+        # Normaliza os nomes das colunas para remover espaços laterais indesejados
+        df_ref.columns = df_ref.columns.astype(str).str.strip()
+        
+        # Procura de forma flexível pela coluna 'Código' (aceita 'codigo', 'Código', etc.)
+        col_codigo = next((col for col in df_ref.columns if col.lower() in ['código', 'codigo', 'cod']), None)
+        
+        if col_codigo:
+            # Padroniza a coluna encontrada para 'Código' e aplica a formatação
+            if col_codigo != 'Código':
+                df_ref.rename(columns={col_codigo: 'Código'}, inplace=True)
+                
+            df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
+            return df_ref
+        else:
+            st.error(f"❌ A coluna de código não foi encontrada na planilha! Colunas disponíveis: {list(df_ref.columns)}")
+            return None
 
 df_cissfa = carregar_tabela_referencia()
 if df_cissfa is not None:
-    st.success("✅ Tabela CISSFA carregada automaticamente do sistema.")
+    st.success("✅ Tabela CISSFA carregada e validada automaticamente pelo sistema.")
 else:
-    st.error("❌ Tabela CISSFA não encontrada no servidor! Verifique os arquivos no GitHub.")
+    st.warning("⚠️ Operação da tabela CISSFA interrompida devido ao erro acima.")
 
 st.markdown("### 🗄️ Upload do Banco de Dados")
 bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
