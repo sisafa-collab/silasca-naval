@@ -4,10 +4,9 @@ import re
 from pdf2image import convert_from_bytes
 import os # Para verificar a existência dos arquivos de imagem
 import base64
-import os
-import streamlit as st
 import pandas as pd
 from dbfread import DBF
+import tempfile
 
 # =================================================================
 # ⚓ SEÇÃO VISUAL E IDENTIDADE (TOPO CENTRALIZADO & SLOGAN FIXO)
@@ -17,7 +16,6 @@ from dbfread import DBF
 if os.path.exists("slogan.png"):
     with open("slogan.png", "rb") as f:
         data_slogan = base64.b64encode(f.read()).decode()
-        # Ampliado de 220px para 300px para máxima legibilidade no canto da tela
         st.markdown(
             f'<img src="data:image/png;base64,{data_slogan}" '
             f'style="position: fixed; bottom: 20px; right: 20px; width: 500px; z-index: 9999;">', 
@@ -25,7 +23,6 @@ if os.path.exists("slogan.png"):
         )
 
 # --- 2. LOGO CENTRALIZADO NO TOPO (AGORA MAIOR) ---
-# Mudamos a calibração das colunas [1, 1.2, 1] para expandir o tamanho do logo central
 col_logo_1, col_logo_2, col_logo_3 = st.columns([0.5, 2, 0.5]) 
 
 with col_logo_2:
@@ -34,35 +31,36 @@ with col_logo_2:
     else:
         st.warning("⚠️ Arquivo 'LOGO_SILASCA.png' não encontrado no repositório.")
 
-# --- 3. TÍTULOS E TEXTOS DO SISTEMA (COMPACTO EM VERMELHO E CINZA) ---
+# --- 3. TÍTULOS E TEXTOS DO SISTEMA ---
 st.markdown("""
 <div style="text-align: center; padding: 15px; border-top: 2px solid #bc3c31; margin-top: 10px; background-color: rgba(76, 73, 85, 0.04); border-radius: 0 0 12px 12px;">
     <p style="color: #bc3c31; font-weight: 900; font-size: 1.6rem; letter-spacing: 2px; line-height: 1.2; text-shadow: 0 0 6px rgba(188, 60, 49, 0.15); margin-bottom: 6px;">
-        Analisador e Interpretador de Faturas 📜📜
+        Analisador e Interpretador de Faturas 📜
     </p>
+    <p style="margin-bottom: 0;">
         <span style="color: #bc3c31; font-weight: 800;">🚨 Confira os dados antes de baixar as planilhas! 🚨</span>
     </p>
 </div>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 📊 CARREGAMENTO DA PLANILHA LOCAL DE REFERÊNCIA (VALORES / INDENIZAÇÕES)
+# 📊 CARREGAMENTO DAS BASES DE DADOS (CISSFA LOCAL & BD UPLOAD)
 # =================================================================
+
 @st.cache_data
 def carregar_tabela_referencia():
-    # Tenta carregar XLSX ou CSV de forma inteligente
+    # Tenta carregar XLSX ou CSV de forma inteligente direto do GitHub
     if os.path.exists("CISSFA-2022-2023-2024.xlsx"):
         try:
             df_ref = pd.read_excel("CISSFA-2022-2023-2024.xlsx")
             df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
             return df_ref
         except Exception as e:
-            st.error(f"Erro ao ler XLSX (Falta o openpyxl?): {e}")
+            st.error(f"Erro ao ler XLSX: {e}")
             return None
             
     elif os.path.exists("CISSFA-2022-2023-2024.csv"):
         try:
-            # Tenta ler com separador padrão ou ponto e vírgula
             df_ref = pd.read_csv("CISSFA-2022-2023-2024.csv", sep=None, engine='python')
             df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
             return df_ref
@@ -72,53 +70,56 @@ def carregar_tabela_referencia():
     else:
         return None
 
-@st.cache_data
-def carregar_base_dbf():
-    # Descobre o diretório exato onde o app.py está salvo na máquina
-    diretorio_atual = os.path.dirname(os.path.abspath(__file__))
-    
-    # Monta o caminho completo e seguro para o BD.dbf
-    arquivo_dbf = os.path.join(diretorio_atual, "BD.dbf")
-    
-    if os.path.exists(arquivo_dbf):
+df_cissfa = carregar_tabela_referencia()
+if df_cissfa is not None:
+    st.success("✅ Tabela CISSFA carregada automaticamente do sistema.")
+else:
+    st.error("❌ Tabela CISSFA não encontrada no servidor! Verifique os arquivos no GitHub.")
+
+st.markdown("### 🗄️ Upload do Banco de Dados")
+bd_file = st.file_uploader("Suba o arquivo "BD" (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
+
+df_bd = None
+if bd_file:
+    with st.spinner("Lendo Banco de Dados..."):
         try:
-            # Lê o DBF e converte para um DataFrame do Pandas
-            tabela = DBF(arquivo_dbf, encoding='latin1')
-            df_ref = pd.DataFrame(iter(tabela))
+            if bd_file.name.lower().endswith('.dbf'):
+                # Cria um arquivo temporário seguro para o DBFRead ler
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".dbf") as tmp:
+                    tmp.write(bd_file.read())
+                    tmp_path = tmp.name
+                df_bd = pd.DataFrame(iter(DBF(tmp_path)))
+                os.remove(tmp_path) # Limpa o rastro logo em seguida
+            elif bd_file.name.lower().endswith('.xlsx'):
+                df_bd = pd.read_excel(bd_file)
+            elif bd_file.name.lower().endswith('.csv'):
+                df_bd = pd.read_csv(bd_file, sep=None, engine='python')
             
-            # Padroniza a coluna de código para string de 8 dígitos
-            if 'Código' in df_ref.columns:
-                df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
-                
-            return df_ref
+            # Padroniza NIP no BD (8 dígitos limpos)
+            if 'NIP' in df_bd.columns:
+                df_bd['NIP'] = df_bd['NIP'].astype(str).str.strip().str.zfill(8)
+            st.success("✅ Banco de Dados carregado na memória com sucesso!")
         except Exception as e:
-            st.error(f"Erro ao ler o BD.dbf (Verifique se a biblioteca dbfread está instalada): {e}")
-            return None
-    else:
-        # Exibe o caminho exato que ele tentou buscar (ótimo para auditoria)
-        st.warning(f"⚠️ Arquivo 'BD.dbf' não encontrado no diretório: {diretorio_atual}")
-        return None
+            st.error(f"Erro ao processar o BD: {e}")
 
-# Carregando a base de referência local
-df_tabela_ref = carregar_base_dbf()
 
-if df_tabela_ref is not None:
-    st.success("⚓ Base de dados BD.dbf carregada com sucesso do diretório local!")
+# =================================================================
+# ⚙️ ÁREA TÉCNICA: PROCESSADOR OCR E CRUZAMENTO DE DADOS
+# =================================================================
 
-# --- 4. ÁREA TÉCNICA: PROCESSADOR OCR E INTELIGÊNCIA ---
-
-# accept_multiple_files=True permite jogar vários PDFs de uma vez!
+st.markdown("### 📄 Processamento de Faturas")
 pdfs_carregados = st.file_uploader("Suba as faturas escaneadas em PDF", type=["pdf"], accept_multiple_files=True)
 
-if pdfs_carregados:
-    st.success(f"⚓ {len(pdfs_carregados)} documento(s) carregado(s) no passadiço!")
+# Lista tática para armazenar todas as guias de todos os PDFs
+dados_consolidados_lasalus = []
+
+if pdfs_carregados and df_bd is not None and df_cissfa is not None:
+    st.success(f"⚓ {len(pdfs_carregados)} documento(s) pronto(s) para o processamento!")
     
     # Processa cada PDF individualmente
     for pdf_carregado in pdfs_carregados:
         
-        # Cria o "Box" expansível para cada arquivo
         with st.expander(f"📂 Inspeção do Arquivo: {pdf_carregado.name}", expanded=False):
-            
             with st.spinner(f"Executando varredura OCR em {pdf_carregado.name}..."):
                 try:
                     pdf_bytes = pdf_carregado.read()
@@ -129,134 +130,124 @@ if pdfs_carregados:
                         texto_pagina = pytesseract.image_to_string(imagem_pagina, lang='por')
                         texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n"
                     
-                    st.info("💡 Varredura concluída.")
-
-                    # =========================================================
-                    # 🎯 SISAFA NAVAL v5: EXTRAÇÃO ZONAL COM SUBTRAÇÃO DE RUÍDO
-                    # =========================================================
-
-                    # 1. CORTA O PDF EM GUIAS (Âncora principal inquebrável)
+                    # 1. CORTA O PDF EM GUIAS
                     blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL', texto_completo)
-
-                    # Filtra apenas blocos que possuam a seção "DADOS DO USUÁRIO"
                     guias_validas = [b for b in blocos_guia if re.search(r'(?i)DADOS\s+DO\s+USU[ÁA]RIO', b)]
 
                     if guias_validas:
-                        st.markdown(f"### 📑 Identificadas {len(guias_validas)} Guia(s) de Apresentação")
+                        st.markdown(f"**Identificadas {len(guias_validas)} Guia(s) neste arquivo:**")
                         
                         for i, guia in enumerate(guias_validas, 1):
                             with st.container(border=True):
-                                st.markdown(f"**GUIA #{i}**")
-                                
-                                # Variáveis padrão de segurança
+                                # Variáveis padrão
                                 nome_usu, nip_usu, vinculo_usu, tipo_usu = "N/A", "N/A", "N/A", "N/A"
                                 
-                                # =========================================================
-                                # ZONA 1: DADOS DO USUÁRIO (ESTRATÉGIA DE SUBTRAÇÃO)
-                                # =========================================================
+                                # --- ZONA 1: DADOS DO USUÁRIO ---
                                 bloco_usuario = re.search(r'(?i)DADOS\s+DO\s+USU[ÁA]RIO(.*?)(?=DADOS\s+DO\s+ENCAMINHAMENTO|MOTIVO\s+DO\s+ENCAMINHAMENTO|$)', guia, re.DOTALL)
                                 
                                 if bloco_usuario:
                                     txt_usr = bloco_usuario.group(1)
-                                    
-                                    # 1º PASSO: Achata tudo para uma única linha (Mata o problema das colunas quebradas do Tesseract)
                                     txt_usr_linha = re.sub(r'\s+', ' ', txt_usr)
                                     
-                                    # 2º PASSO: Caça Direta Inconfundível
-                                    # Caça NIP (Qualquer sequência exata de 8 dígitos isolada)
                                     match_nip = re.search(r'\b\d{8}\b', txt_usr_linha)
                                     if match_nip: nip_usu = match_nip.group(0)
                                         
-                                    # Caça Vínculo
                                     match_vinc = re.search(r'(?i)\b(TITULAR|DEPENDENTE)\b', txt_usr_linha)
                                     if match_vinc: vinculo_usu = match_vinc.group(1).upper()
                                         
-                                    # Caça Tipo
                                     match_tipo = re.search(r'(?i)\b(DIRETO|INDIRETO)\b', txt_usr_linha)
                                     if match_tipo: tipo_usu = match_tipo.group(1).upper()
                                         
-                                    # 3º PASSO: Caça Nome por Subtração de Rótulos
-                                    # Removemos todas as "etiquetas" que o OCR lê do grid. 
                                     ruido_labels = r'(?i)\b(NOME SOCIAL|NOME|NIP|POSTO|V[ÍI]NCULO|TIPO|TITULAR|DEPENDENTE|DIRETO|INDIRETO|DADOS DO USU[ÁA]RIO)\b'
                                     txt_sem_labels = re.sub(ruido_labels, '', txt_usr_linha)
-                                    
-                                    # Removemos também o NIP que já guardamos, para que não suje o nome
                                     if nip_usu != "N/A":
                                         txt_sem_labels = txt_sem_labels.replace(nip_usu, '')
-                                    
-                                    # O que restou é o nome sujo com caracteres estranhos do grid (| , _ , :). Limpamos mantendo apenas letras.
                                     nome_bruto = re.sub(r'[^A-Za-zÀ-Úà-ú\s]', ' ', txt_sem_labels)
-                                    
-                                    # Remove espaços duplos
                                     nome_usu = re.sub(r'\s+', ' ', nome_bruto).strip()
-                                    if not nome_usu:
-                                        nome_usu = "Não identificado"
+                                    if not nome_usu: nome_usu = "Não identificado"
 
-                                # --- Renderização do Painel Pessoal ---
-                                col1, col2 = st.columns(2)
-                                col1.write(f"👤 **Nome:** {nome_usu} \n\n**NIP:** `{nip_usu}`")
-                                col2.write(f"🔗 **Vínculo:** `{vinculo_usu}` \n\n**Tipo:** `{tipo_usu}`")
+                                st.write(f"👤 **{nome_usu}** | NIP: `{nip_usu}`")
                                 
-                                # =========================================================
-                                # ZONA 2: MOTIVO DO ENCAMINHAMENTO (PROCEDIMENTOS)
-                                # =========================================================
+                                # --- ZONA 2: PROCEDIMENTOS E CRUZAMENTO COM BD/CISSFA ---
                                 bloco_motivo = re.search(r'(?i)MOTIVO\s+DO\s+ENCAMINHAMENTO(.*?)(?=AUTORIZA[CÇ][AÃ]O|ASSINATURA|TOTAL|VISTO|$)', guia, re.DOTALL)
                                 
                                 if bloco_motivo:
-                                    txt_mot = bloco_motivo.group(1) 
-                                    
-                                    # Procura 8 dígitos seguidos de qualquer texto
-                                    procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–\|]*([^\n\r]+)', txt_mot)
+                                    procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–\|]*([^\n\r]+)', bloco_motivo.group(1))
                                     
                                     if procedimentos:
-                                        st.markdown("**🩺 Exames / Procedimentos Faturados:**")
-                                        
                                         for cod, desc in procedimentos:
-                                            # Regra Anti-Colisão: Se o código for igual ao NIP capturado acima, ignora.
                                             if cod == nip_usu: continue 
-                                            
                                             desc_limpa = re.sub(r'[_\|]+', '', desc).strip()
-                                            if len(desc_limpa) > 2: # Evita imprimir descrições formadas só por pontos soltos
-                                                st.caption(f"🔹 `{cod}` - {desc_limpa}")
-                                    else:
-                                        st.caption("⚠️ *Nenhum código CBHPM/TUSS identificado nesta zona.*")
-                                else:
-                                    st.caption("⚠️ *Bloco 'Motivo do Encaminhamento' não localizado pelo OCR.*")
-                    
-                    st.divider() # Separa as guias das ferramentas brutas
-                    
-                    # =========================================================
-                    # 🛠️ FERRAMENTAS GENÉRICAS (Para o resto da fatura)
-                    # =========================================================
-                    aba_bruta, aba_filtros = st.tabs(["📄 Texto Bruto Integral", "🔍 Capturador de NIPs/Valores Soltos e Busca"])
-                    
-                    with aba_bruta:
-                        st.text_area("Conteúdo extraído via OCR", value=texto_completo, height=400, key=f"txt_{pdf_carregado.name}")
-                        
-                    with aba_filtros:
-                        colA, colB = st.columns(2)
-                        with colA:
-                            st.markdown("#### 🎯 NIPs e Valores Soltos no Documento")
-                            nips = list(set(re.findall(r"\b(?:\d{2}\.\d{4}\.\d{2}|\d{8})\b", texto_completo)))
-                            if nips:
-                                st.success(f"NIPs avulsos localizados: {len(nips)}")
-                                st.write(nips)
-                            
-                            valores = list(set(re.findall(r"(?:R\$\s*)?\b\d{1,3}(?:\.\d{3})*,\d{2}\b", texto_completo)))
-                            if valores:
-                                st.info(f"Valores avulsos localizados: {len(valores)}")
-                                st.write(valores)
-                                
-                        with colB:
-                            st.markdown("#### 🔎 Busca Manual")
-                            termo = st.text_input("Buscar termo (ex: NUP, hospital):", key=f"busc_{pdf_carregado.name}")
-                            if termo:
-                                linhas_encontradas = [l.strip() for l in texto_completo.split('\n') if termo.lower() in l.lower()]
-                                if linhas_encontradas:
-                                    st.success(f"Encontradas {len(linhas_encontradas)} ocorrências:")
-                                    for linha in linhas_encontradas:
-                                        st.code(linha, language="text")
-
+                                            
+                                            # ===============================================================
+                                            # 🎯 REGRA DE NEGÓCIO: CRUZAMENTO COM BD E CISSFA
+                                            # ===============================================================
+                                            valor_final = 0.0
+                                            status_cobranca = "Não Avaliado"
+                                            
+                                            if nip_usu != "N/A":
+                                                info_militar = df_bd[df_bd['NIP'] == nip_usu]
+                                                
+                                                if not info_militar.empty:
+                                                    # 1. Pega os parâmetros do militar
+                                                    regra_imh = str(info_militar['IMH,C,1'].values[0]).strip().upper() if 'IMH,C,1' in info_militar.columns else "S"
+                                                    tipo_dep_bd = str(info_militar['TIPO_DEP'].values[0]).strip().upper() if 'TIPO_DEP' in info_militar.columns else "D"
+                                                    
+                                                    # 2. Barreira Mestre: Se IMH,C,1 for "N", bloqueia!
+                                                    if regra_imh == 'N':
+                                                        valor_final = 0.0
+                                                        status_cobranca = "NÃO INDENIZA (Isento)"
+                                                        st.warning(f"⚠️ NIP {nip_usu} possui marcação 'N' no BD. Indenização zerada.")
+                                                    
+                                                    # 3. Se for 'S', procede com o cálculo normal
+                                                    else:
+                                                        info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
+                                                        if not info_cissfa.empty:
+                                                            if tipo_dep_bd == 'I':
+                                                                valor_final = info_cissfa['Valor 100%'].values[0]
+                                                                status_cobranca = "Indeniza 100%"
+                                                            else:
+                                                                valor_final = info_cissfa['Valor 20%'].values[0]
+                                                                status_cobranca = "Indeniza 20%"
+                                                        else:
+                                                            status_cobranca = "Código TUSS não achado no CISSFA"
+                                                else:
+                                                    status_cobranca = "NIP não achado no BD"
+                                            
+                                            st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final})")
+                                            
+                                            # Armazena na lista global
+                                            dados_consolidados_lasalus.append({
+                                                "Arquivo Origem": pdf_carregado.name,
+                                                "NIP": nip_usu,
+                                                "Nome do Usuário": nome_usu,
+                                                "Código TUSS": cod,
+                                                "Descrição Exame": desc_limpa,
+                                                "Status Cálculo": status_cobranca,
+                                                "Valor Cobrado (R$)": valor_final
+                                            })
                 except Exception as e:
                     st.error(f"Erro ao processar {pdf_carregado.name}: {e}")
 
+# =================================================================
+# 📥 MÓDULO DE EXPORTAÇÃO (PLANILHA FINAL LASALUS)
+# =================================================================
+if dados_consolidados_lasalus:
+    st.divider()
+    st.markdown("### 📊 Tabela Consolidada de Faturamento")
+    
+    df_final = pd.DataFrame(dados_consolidados_lasalus)
+    
+    # Mostra a tabela na tela para auditoria
+    st.dataframe(df_final, use_container_width=True)
+    
+    # Gera o botão de Download Seguro (em memória, sem gravar no disco)
+    csv_memoria = df_final.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Baixar Planilha Consolidada (CSV)",
+        data=csv_memoria,
+        file_name="faturamento_lasalus_auditado.csv",
+        mime="text/csv",
+    )
+elif pdfs_carregados and (df_bd is None or df_cissfa is None):
+    st.warning("⚠️ Carregue o Banco de Dados e garanta que a CISSFA foi carregada para iniciar o cruzamento.")
