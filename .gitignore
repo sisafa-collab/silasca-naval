@@ -1,0 +1,5 @@
+# Bloqueia qualquer arquivo de planilha ou banco de dados local no Git
+BD.xlsx
+BD.csv
+BD.dbf
+BD.zip

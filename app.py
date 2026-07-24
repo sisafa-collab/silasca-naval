@@ -7,6 +7,7 @@ import base64
 import os
 import streamlit as st
 import pandas as pd
+from dbfread import DBF
 
 # =================================================================
 # ⚓ SEÇÃO VISUAL E IDENTIDADE (TOPO CENTRALIZADO & SLOGAN FIXO)
@@ -70,6 +71,35 @@ def carregar_tabela_referencia():
             return None
     else:
         return None
+
+@st.cache_data
+def carregar_base_dbf():
+    # O arquivo BD.dbf deve estar na mesma pasta do app.py (ou ajuste o caminho local)
+    arquivo_dbf = "BD.dbf"
+    
+    if os.path.exists(arquivo_dbf):
+        try:
+            # Lê o DBF e converte para um DataFrame do Pandas
+            tabela = DBF(arquivo_dbf, encoding='latin1')
+            df_ref = pd.DataFrame(iter(tabela))
+            
+            # Padroniza a coluna de código para string de 8 dígitos
+            if 'Código' in df_ref.columns:
+                df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
+                
+            return df_ref
+        except Exception as e:
+            st.error(f"Erro ao ler o BD.dbf (Verifique se a biblioteca dbfread está instalada): {e}")
+            return None
+    else:
+        st.warning("⚠️ Arquivo 'BD.dbf' não encontrado na pasta local do projeto.")
+        return None
+
+# Carregando a base de referência local
+df_tabela_ref = carregar_base_dbf()
+
+if df_tabela_ref is not None:
+    st.success("⚓ Base de dados BD.dbf carregada com sucesso para as indenizações!")
 
 # --- 4. ÁREA TÉCNICA: PROCESSADOR OCR E INTELIGÊNCIA ---
 
