@@ -77,7 +77,7 @@ else:
     st.error("❌ Tabela CISSFA não encontrada no servidor! Verifique os arquivos no GitHub.")
 
 st.markdown("### 🗄️ Upload do Banco de Dados")
-bd_file = st.file_uploader("Suba o arquivo "BD" (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
+bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
 
 df_bd = None
 if bd_file:
