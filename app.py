@@ -127,7 +127,8 @@ if bd_file:
                 df_bd = pd.read_excel(bd_file)
                 
             elif bd_file.name.lower().endswith('.csv'):
-                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1', errors='ignore')
+                # CORREÇÃO APLICADA AQUI: encoding_errors em vez de errors
+                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1', encoding_errors='ignore')
             
             # Padroniza NIP no BD (8 dígitos limpos) se a coluna existir
             if df_bd is not None and not df_bd.empty:
