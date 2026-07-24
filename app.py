@@ -74,8 +74,11 @@ def carregar_tabela_referencia():
 
 @st.cache_data
 def carregar_base_dbf():
-    # O arquivo BD.dbf deve estar na mesma pasta do app.py (ou ajuste o caminho local)
-    arquivo_dbf = "BD.dbf"
+    # Descobre o diretório exato onde o app.py está salvo na máquina
+    diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+    
+    # Monta o caminho completo e seguro para o BD.dbf
+    arquivo_dbf = os.path.join(diretorio_atual, "BD.dbf")
     
     if os.path.exists(arquivo_dbf):
         try:
@@ -92,14 +95,15 @@ def carregar_base_dbf():
             st.error(f"Erro ao ler o BD.dbf (Verifique se a biblioteca dbfread está instalada): {e}")
             return None
     else:
-        st.warning("⚠️ Arquivo 'BD.dbf' não encontrado na pasta local do projeto.")
+        # Exibe o caminho exato que ele tentou buscar (ótimo para auditoria)
+        st.warning(f"⚠️ Arquivo 'BD.dbf' não encontrado no diretório: {diretorio_atual}")
         return None
 
 # Carregando a base de referência local
 df_tabela_ref = carregar_base_dbf()
 
 if df_tabela_ref is not None:
-    st.success("⚓ Base de dados BD.dbf carregada com sucesso para as indenizações!")
+    st.success("⚓ Base de dados BD.dbf carregada com sucesso do diretório local!")
 
 # --- 4. ÁREA TÉCNICA: PROCESSADOR OCR E INTELIGÊNCIA ---
 
