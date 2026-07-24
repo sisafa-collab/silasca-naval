@@ -94,7 +94,7 @@ def carregar_tabela_referencia():
 
 df_cissfa = carregar_tabela_referencia()
 if df_cissfa is not None:
-    st.success("✅ Tabela CISSFA carregada, linha inútil ignorada e colunas validadas com sucesso!")
+    st.success("✅ Tabela CISSFA carregada com sucesso!")
 else:
     st.warning("⚠️ Operação da tabela CISSFA interrompida.")
 
