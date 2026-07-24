@@ -49,29 +49,27 @@ st.markdown("""
 # =================================================================
 @st.cache_data
 def carregar_tabela_referencia():
-    # Ajuste o nome do arquivo abaixo se o seu for .csv (use pd.read_csv) ou outro nome de .xlsx
-    nome_arquivo_tabela = "CISSFA-2022-2023-2024.xlsx" 
-    
-    if os.path.exists(nome_arquivo_tabela):
+    # Tenta carregar XLSX ou CSV de forma inteligente
+    if os.path.exists("CISSFA-2022-2023-2024.xlsx"):
         try:
-            df_ref = pd.read_excel(nome_arquivo_tabela)
-            # Padroniza os nomes das colunas ou garante o tipo string para o código
+            df_ref = pd.read_excel("CISSFA-2022-2023-2024.xlsx")
             df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
             return df_ref
         except Exception as e:
-            st.error(f"Erro ao ler a planilha de referência local: {e}")
+            st.error(f"Erro ao ler XLSX (Falta o openpyxl?): {e}")
+            return None
+            
+    elif os.path.exists("CISSFA-2022-2023-2024.csv"):
+        try:
+            # Tenta ler com separador padrão ou ponto e vírgula
+            df_ref = pd.read_csv("CISSFA-2022-2023-2024.csv", sep=None, engine='python')
+            df_ref['Código'] = df_ref['Código'].astype(str).str.strip().str.zfill(8)
+            return df_ref
+        except Exception as e:
+            st.error(f"Erro ao ler CSV: {e}")
             return None
     else:
-        # Aviso amigável caso a planilha ainda não esteja na pasta
         return None
-
-df_tabela_ref = carregar_tabela_referencia()
-
-if df_tabela_ref is not None:
-    st.success("⚓ Tabela local de códigos e valores carregada com sucesso para os cálculos!")
-else:
-    st.warning("⚠️ Planilha de referência local não encontrada. Os códigos serão lidos, mas os valores monetários não serão cruzados automaticamente.")
-
 
 # --- 4. ÁREA TÉCNICA: PROCESSADOR OCR E INTELIGÊNCIA ---
 
