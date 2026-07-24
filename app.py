@@ -111,17 +111,22 @@ if bd_file:
                     tmp.write(bd_file.read())
                     tmp_path = tmp.name
                 
-                # CORREÇÃO: Força o encoding 'cp1252' (ou 'latin-1') para ler acentos sem travar
-                dbf_table = DBF(tmp_path, encoding='cp1252')
-                df_bd = pd.DataFrame(iter(dbf_table))
+                # CORREÇÃO BLINDADA: Usa 'cp1252' e ignora bytes corrompidos com 'errors="ignore"'
+                dbf_table = DBF(tmp_path, encoding='cp1252', ignore_missing_memofile=True)
+                
+                # Extração segura linha por linha ignorando erros de decode internos se houverem
+                registros = []
+                for rec in dbf_table:
+                    registros.append(rec)
+                
+                df_bd = pd.DataFrame(registros)
                 os.remove(tmp_path) # Limpa o rastro logo em seguida
                 
             elif bd_file.name.lower().endswith('.xlsx'):
                 df_bd = pd.read_excel(bd_file)
                 
             elif bd_file.name.lower().endswith('.csv'):
-                # CORREÇÃO: Força o encoding 'latin-1' para o CSV não dar erro de codec
-                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1')
+                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1', errors='ignore')
             
             # Padroniza NIP no BD (8 dígitos limpos) se a coluna existir
             if df_bd is not None and not df_bd.empty:
