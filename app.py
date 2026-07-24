@@ -174,102 +174,170 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                         texto_pagina = pytesseract.image_to_string(imagem_pagina, lang='por')
                         texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n"
                     
-                    # 1. CORTA O PDF EM GUIAS
-                    blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL', texto_completo)
-                    guias_validas = [b for b in blocos_guia if re.search(r'(?i)DADOS\s+DO\s+USU[ÁA]RIO', b)]
-
-                    if guias_validas:
-                        st.markdown(f"**Identificadas {len(guias_validas)} Guia(s) neste arquivo:**")
+                    # ==========================================================
+                    # 🚦 INTELIGÊNCIA DE DECISÃO: MODO RELATÓRIO vs MODO GUIA
+                    # ==========================================================
+                    is_fatura_tabela = bool(re.search(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo))
+                    
+                    if is_fatura_tabela:
+                        st.info("📄 Formato de Fatura/Relatório em Tabela detectado! Lendo registros...")
+                        linhas = texto_completo.split('\n')
+                        exames_encontrados = 0
                         
-                        for i, guia in enumerate(guias_validas, 1):
-                            with st.container(border=True):
-                                # Variáveis padrão
-                                nome_usu, nip_usu, vinculo_usu, tipo_usu = "N/A", "N/A", "N/A", "N/A"
+                        with st.container(border=True):
+                            for linha in linhas:
+                                # Procura dois números de 8 dígitos na mesma linha (ID EXAME e NIP)
+                                numeros_8_dig = re.findall(r'\b\d{8}\b', linha)
                                 
-                                # --- ZONA 1: DADOS DO USUÁRIO ---
-                                bloco_usuario = re.search(r'(?i)DADOS\s+DO\s+USU[ÁA]RIO(.*?)(?=DADOS\s+DO\s+ENCAMINHAMENTO|MOTIVO\s+DO\s+ENCAMINHAMENTO|$)', guia, re.DOTALL)
-                                
-                                if bloco_usuario:
-                                    txt_usr = bloco_usuario.group(1)
-                                    txt_usr_linha = re.sub(r'\s+', ' ', txt_usr)
+                                if len(numeros_8_dig) >= 2:
+                                    # Pela ordem da tabela da imagem: 1º é ID EXAME, 2º é NIP
+                                    cod = numeros_8_dig[0]
+                                    nip_usu = numeros_8_dig[1]
                                     
-                                    match_nip = re.search(r'\b\d{8}\b', txt_usr_linha)
-                                    if match_nip: nip_usu = match_nip.group(0)
+                                    # Regex ninja para capturar tudo entre o TUSS e o NIP (Descrição) e o Nome
+                                    match_linha = re.search(rf'{cod}\s+(.+?)\s+{nip_usu}\s+(.+?)(?:\s+\d{{2}}/\d{{2}}/\d{{2,4}}|$)', linha)
+                                    
+                                    if match_linha:
+                                        desc_limpa = match_linha.group(1).strip()
+                                        nome_bruto = match_linha.group(2).strip()
+                                        # Limpa sujeiras do nome do paciente
+                                        nome_usu = re.sub(r'[^A-Za-zÀ-Úà-ú\s]', '', nome_bruto).strip()
+                                    else:
+                                        desc_limpa = "Descrição extraída com ruído"
+                                        nome_usu = "Nome extraído com ruído"
                                         
-                                    match_vinc = re.search(r'(?i)\b(TITULAR|DEPENDENTE)\b', txt_usr_linha)
-                                    if match_vinc: vinculo_usu = match_vinc.group(1).upper()
-                                        
-                                    match_tipo = re.search(r'(?i)\b(DIRETO|INDIRETO)\b', txt_usr_linha)
-                                    if match_tipo: tipo_usu = match_tipo.group(1).upper()
-                                        
-                                    ruido_labels = r'(?i)\b(NOME SOCIAL|NOME|NIP|POSTO|V[ÍI]NCULO|TIPO|TITULAR|DEPENDENTE|DIRETO|INDIRETO|DADOS DO USU[ÁA]RIO)\b'
-                                    txt_sem_labels = re.sub(ruido_labels, '', txt_usr_linha)
-                                    if nip_usu != "N/A":
-                                        txt_sem_labels = txt_sem_labels.replace(nip_usu, '')
-                                    nome_bruto = re.sub(r'[^A-Za-zÀ-Úà-ú\s]', ' ', txt_sem_labels)
-                                    nome_usu = re.sub(r'\s+', ' ', nome_bruto).strip()
                                     if not nome_usu: nome_usu = "Não identificado"
-
-                                st.write(f"👤 **{nome_usu}** | NIP: `{nip_usu}`")
-                                
-                                # --- ZONA 2: PROCEDIMENTOS E CRUZAMENTO COM BD/CISSFA ---
-                                bloco_motivo = re.search(r'(?i)MOTIVO\s+DO\s+ENCAMINHAMENTO(.*?)(?=AUTORIZA[CÇ][AÃ]O|ASSINATURA|TOTAL|VISTO|$)', guia, re.DOTALL)
-                                
-                                if bloco_motivo:
-                                    procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–\|]*([^\n\r]+)', bloco_motivo.group(1))
                                     
-                                    if procedimentos:
-                                        for cod, desc in procedimentos:
-                                            if cod == nip_usu: continue 
-                                            desc_limpa = re.sub(r'[_\|]+', '', desc).strip()
+                                    exames_encontrados += 1
+                                    
+                                    # ===============================================================
+                                    # 🎯 REGRA DE NEGÓCIO: CRUZAMENTO COM BD E CISSFA
+                                    # ===============================================================
+                                    valor_final = 0.0
+                                    status_cobranca = "Não Avaliado"
+                                    
+                                    if nip_usu != "N/A":
+                                        info_militar = df_bd[df_bd['NIP'] == nip_usu]
+                                        if not info_militar.empty:
+                                            regra_imh = str(info_militar['IMH,C,1'].values[0]).strip().upper() if 'IMH,C,1' in info_militar.columns else "S"
+                                            tipo_dep_bd = str(info_militar['TIPO_DEP'].values[0]).strip().upper() if 'TIPO_DEP' in info_militar.columns else "D"
                                             
-                                            # ===============================================================
-                                            # 🎯 REGRA DE NEGÓCIO: CRUZAMENTO COM BD E CISSFA
-                                            # ===============================================================
-                                            valor_final = 0.0
-                                            status_cobranca = "Não Avaliado"
-                                            
-                                            if nip_usu != "N/A":
-                                                info_militar = df_bd[df_bd['NIP'] == nip_usu]
-                                                
-                                                if not info_militar.empty:
-                                                    # 1. Pega os parâmetros do militar
-                                                    regra_imh = str(info_militar['IMH,C,1'].values[0]).strip().upper() if 'IMH,C,1' in info_militar.columns else "S"
-                                                    tipo_dep_bd = str(info_militar['TIPO_DEP'].values[0]).strip().upper() if 'TIPO_DEP' in info_militar.columns else "D"
-                                                    
-                                                    # 2. Barreira Mestre: Se IMH,C,1 for "N", bloqueia!
-                                                    if regra_imh == 'N':
-                                                        valor_final = 0.0
-                                                        status_cobranca = "NÃO INDENIZA (Isento)"
-                                                        st.warning(f"⚠️ NIP {nip_usu} possui marcação 'N' no BD. Indenização zerada.")
-                                                    
-                                                    # 3. Se for 'S', procede com o cálculo normal
+                                            if regra_imh == 'N':
+                                                valor_final = 0.0
+                                                status_cobranca = "NÃO INDENIZA (Isento)"
+                                            else:
+                                                info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
+                                                if not info_cissfa.empty:
+                                                    if tipo_dep_bd == 'I':
+                                                        valor_final = info_cissfa['Valor 100%'].values[0]
+                                                        status_cobranca = "Indeniza 100%"
                                                     else:
-                                                        info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
-                                                        if not info_cissfa.empty:
-                                                            if tipo_dep_bd == 'I':
-                                                                valor_final = info_cissfa['Valor 100%'].values[0]
-                                                                status_cobranca = "Indeniza 100%"
-                                                            else:
-                                                                valor_final = info_cissfa['Valor 20%'].values[0]
-                                                                status_cobranca = "Indeniza 20%"
-                                                        else:
-                                                            status_cobranca = "Código TUSS não achado no CISSFA"
+                                                        valor_final = info_cissfa['Valor 20%'].values[0]
+                                                        status_cobranca = "Indeniza 20%"
                                                 else:
-                                                    status_cobranca = "NIP não achado no BD"
+                                                    status_cobranca = "Código TUSS não achado no CISSFA"
+                                        else:
+                                            status_cobranca = "NIP não achado no BD"
                                             
-                                            st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final})")
+                                    st.write(f"👤 **{nome_usu}** | NIP: `{nip_usu}`")
+                                    st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final})")
+                                    
+                                    # Armazena na lista global
+                                    dados_consolidados_lasalus.append({
+                                        "Arquivo Origem": pdf_carregado.name,
+                                        "NIP": nip_usu,
+                                        "Nome do Usuário": nome_usu,
+                                        "Código TUSS": cod,
+                                        "Descrição Exame": desc_limpa,
+                                        "Status Cálculo": status_cobranca,
+                                        "Valor Cobrado (R$)": valor_final
+                                    })
+                                    
+                        if exames_encontrados == 0:
+                            st.warning("⚠️ O formato da tabela foi detectado, mas o OCR não conseguiu ler as linhas com clareza. Verifique a qualidade do PDF.")
+
+                    else:
+                        # ==========================================================
+                        # ⚓ MODO CLÁSSICO: GUIA DE APRESENTAÇÃO DA MB (Padrão Antigo)
+                        # ==========================================================
+                        blocos_guia = re.split(r'(?i)MARINHA\s+DO\s+BRASIL', texto_completo)
+                        guias_validas = [b for b in blocos_guia if re.search(r'(?i)DADOS\s+DO\s+USU[ÁA]RIO', b)]
+
+                        if guias_validas:
+                            st.markdown(f"**Identificadas {len(guias_validas)} Guia(s) de Apresentação neste arquivo:**")
+                            
+                            for i, guia in enumerate(guias_validas, 1):
+                                with st.container(border=True):
+                                    nome_usu, nip_usu, vinculo_usu, tipo_usu = "N/A", "N/A", "N/A", "N/A"
+                                    
+                                    # ZONA 1: DADOS DO USUÁRIO
+                                    bloco_usuario = re.search(r'(?i)DADOS\s+DO\s+USU[ÁA]RIO(.*?)(?=DADOS\s+DO\s+ENCAMINHAMENTO|MOTIVO\s+DO\s+ENCAMINHAMENTO|$)', guia, re.DOTALL)
+                                    if bloco_usuario:
+                                        txt_usr_linha = re.sub(r'\s+', ' ', bloco_usuario.group(1))
+                                        
+                                        match_nip = re.search(r'\b\d{8}\b', txt_usr_linha)
+                                        if match_nip: nip_usu = match_nip.group(0)
                                             
-                                            # Armazena na lista global
-                                            dados_consolidados_lasalus.append({
-                                                "Arquivo Origem": pdf_carregado.name,
-                                                "NIP": nip_usu,
-                                                "Nome do Usuário": nome_usu,
-                                                "Código TUSS": cod,
-                                                "Descrição Exame": desc_limpa,
-                                                "Status Cálculo": status_cobranca,
-                                                "Valor Cobrado (R$)": valor_final
-                                            })
+                                        ruido_labels = r'(?i)\b(NOME SOCIAL|NOME|NIP|POSTO|V[ÍI]NCULO|TIPO|TITULAR|DEPENDENTE|DIRETO|INDIRETO|DADOS DO USU[ÁA]RIO)\b'
+                                        txt_sem_labels = re.sub(ruido_labels, '', txt_usr_linha)
+                                        if nip_usu != "N/A": txt_sem_labels = txt_sem_labels.replace(nip_usu, '')
+                                        
+                                        nome_bruto = re.sub(r'[^A-Za-zÀ-Úà-ú\s]', ' ', txt_sem_labels)
+                                        nome_usu = re.sub(r'\s+', ' ', nome_bruto).strip()
+                                        if not nome_usu: nome_usu = "Não identificado"
+
+                                    st.write(f"👤 **{nome_usu}** | NIP: `{nip_usu}`")
+                                    
+                                    # ZONA 2: PROCEDIMENTOS
+                                    bloco_motivo = re.search(r'(?i)MOTIVO\s+DO\s+ENCAMINHAMENTO(.*?)(?=AUTORIZA[CÇ][AÃ]O|ASSINATURA|TOTAL|VISTO|$)', guia, re.DOTALL)
+                                    if bloco_motivo:
+                                        procedimentos = re.findall(r'\b(\d{8})\b[\s\.\-–\|]*([^\n\r]+)', bloco_motivo.group(1))
+                                        if procedimentos:
+                                            for cod, desc in procedimentos:
+                                                if cod == nip_usu: continue 
+                                                desc_limpa = re.sub(r'[_\|]+', '', desc).strip()
+                                                
+                                                # CRUZAMENTO IGUAL AO DA TABELA
+                                                valor_final = 0.0
+                                                status_cobranca = "Não Avaliado"
+                                                
+                                                if nip_usu != "N/A":
+                                                    info_militar = df_bd[df_bd['NIP'] == nip_usu]
+                                                    if not info_militar.empty:
+                                                        regra_imh = str(info_militar['IMH,C,1'].values[0]).strip().upper() if 'IMH,C,1' in info_militar.columns else "S"
+                                                        tipo_dep_bd = str(info_militar['TIPO_DEP'].values[0]).strip().upper() if 'TIPO_DEP' in info_militar.columns else "D"
+                                                        
+                                                        if regra_imh == 'N':
+                                                            valor_final = 0.0
+                                                            status_cobranca = "NÃO INDENIZA (Isento)"
+                                                        else:
+                                                            info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
+                                                            if not info_cissfa.empty:
+                                                                if tipo_dep_bd == 'I':
+                                                                    valor_final = info_cissfa['Valor 100%'].values[0]
+                                                                    status_cobranca = "Indeniza 100%"
+                                                                else:
+                                                                    valor_final = info_cissfa['Valor 20%'].values[0]
+                                                                    status_cobranca = "Indeniza 20%"
+                                                            else:
+                                                                status_cobranca = "Código TUSS não achado no CISSFA"
+                                                    else:
+                                                        status_cobranca = "NIP não achado no BD"
+                                                        
+                                                st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final})")
+                                                
+                                                dados_consolidados_lasalus.append({
+                                                    "Arquivo Origem": pdf_carregado.name,
+                                                    "NIP": nip_usu,
+                                                    "Nome do Usuário": nome_usu,
+                                                    "Código TUSS": cod,
+                                                    "Descrição Exame": desc_limpa,
+                                                    "Status Cálculo": status_cobranca,
+                                                    "Valor Cobrado (R$)": valor_final
+                                                })
+                        else:
+                            st.warning("⚠️ Nenhuma guia ou tabela de faturamento compatível foi localizada neste PDF.")
+
                 except Exception as e:
                     st.error(f"Erro ao processar {pdf_carregado.name}: {e}")
 
