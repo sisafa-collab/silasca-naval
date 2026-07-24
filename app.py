@@ -111,16 +111,25 @@ if bd_file:
                     tmp.write(bd_file.read())
                     tmp_path = tmp.name
                 
-                # CORREÇÃO BLINDADA: Usa 'cp1252' e ignora bytes corrompidos com 'errors="ignore"'
+                # CORREÇÃO BLINDADA: Lê o DBF ignorando erros de codificação a nível de bytes
                 dbf_table = DBF(tmp_path, encoding='cp1252', ignore_missing_memofile=True)
                 
-                # Extração segura linha por linha ignorando erros de decode internos se houverem
                 registros = []
                 for rec in dbf_table:
-                    registros.append(rec)
+                    rec_limpo = {}
+                    for k, v in rec.items():
+                        # Se o campo veio em formato de bytes com caracteres inválidos, tratamos com segurança
+                        if isinstance(v, bytes):
+                            try:
+                                rec_limpo[k] = v.decode('cp1252', errors='ignore')
+                            except Exception:
+                                rec_limpo[k] = ""
+                        else:
+                            rec_limpo[k] = v
+                    registros.append(rec_limpo)
                 
                 df_bd = pd.DataFrame(registros)
-                os.remove(tmp_path) # Limpa o rastro logo em seguida
+                os.remove(tmp_path) # Limpa o rastro do arquivo temporário
                 
             elif bd_file.name.lower().endswith('.xlsx'):
                 df_bd = pd.read_excel(bd_file)
