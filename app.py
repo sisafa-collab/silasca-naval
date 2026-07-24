@@ -164,7 +164,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
     for pdf_carregado in pdfs_carregados:
         
         with st.expander(f"📂 Inspeção do Arquivo: {pdf_carregado.name}", expanded=False):
-            with st.spinner(f"Executando varredura OCR em {pdf_carregado.name}..."):
+            with st.spinner(f"A executar varredura OCR em {pdf_carregado.name}..."):
                 try:
                     pdf_bytes = pdf_carregado.read()
                     paginas = convert_from_bytes(pdf_bytes)
@@ -175,12 +175,19 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                         texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n"
                     
                     # ==========================================================
+                    # 👁️ RAIO-X DO RADAR (TEXTO BRUTO DO OCR)
+                    # ==========================================================
+                    with st.expander("👁️ Ver Texto Bruto (Raio-X do OCR)", expanded=False):
+                        st.info("💡 Dica de Auditoria: Verifique se os números de 8 dígitos (NIP e TUSS) foram lidos com ruído (ex: 'O' em vez de '0', espaços a mais, ou colados a letras).")
+                        st.text_area("Exatamente o que o motor de OCR conseguiu ler da imagem:", texto_completo, height=300)
+                        
+                    # ==========================================================
                     # 🚦 INTELIGÊNCIA DE DECISÃO: MODO RELATÓRIO vs MODO GUIA
                     # ==========================================================
                     is_fatura_tabela = bool(re.search(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo))
                     
                     if is_fatura_tabela:
-                        st.info("📄 Formato de Fatura/Relatório em Tabela detectado! Lendo registros...")
+                        st.info("📄 Formato de Fatura/Relatório em Tabela detetado! A ler registos...")
                         linhas = texto_completo.split('\n')
                         exames_encontrados = 0
                         
@@ -200,7 +207,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                     if match_linha:
                                         desc_limpa = match_linha.group(1).strip()
                                         nome_bruto = match_linha.group(2).strip()
-                                        # Limpa sujeiras do nome do paciente
+                                        # Limpa sujidades do nome do paciente
                                         nome_usu = re.sub(r'[^A-Za-zÀ-Úà-ú\s]', '', nome_bruto).strip()
                                     else:
                                         desc_limpa = "Descrição extraída com ruído"
@@ -244,7 +251,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                     
                                     # Armazena na lista global
                                     dados_consolidados_lasalus.append({
-                                        "Arquivo Origem": pdf_carregado.name,
+                                        "Ficheiro Origem": pdf_carregado.name,
                                         "NIP": nip_usu,
                                         "Nome do Usuário": nome_usu,
                                         "Código TUSS": cod,
@@ -254,7 +261,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                     })
                                     
                         if exames_encontrados == 0:
-                            st.warning("⚠️ O formato da tabela foi detectado, mas o OCR não conseguiu ler as linhas com clareza. Verifique a qualidade do PDF.")
+                            st.warning("⚠️ O formato da tabela foi detetado, mas o OCR não conseguiu ler as linhas com clareza. Verifique a qualidade do PDF (abra o 'Raio-X do OCR' acima para investigar).")
 
                     else:
                         # ==========================================================
