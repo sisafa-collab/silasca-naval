@@ -106,36 +106,30 @@ if bd_file:
     with st.spinner("Lendo Banco de Dados..."):
         try:
             if bd_file.name.lower().endswith('.dbf'):
-                # Cria um arquivo temporário seguro para o DBF ler
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".dbf") as tmp:
                     tmp.write(bd_file.read())
                     tmp_path = tmp.name
                 
-                # BLINDAGEM MÁXIMA: char_decode_errors='ignore' resolve o problema internamente na raiz
                 dbf_table = DBF(
                     tmp_path, 
                     encoding='cp1252', 
                     ignore_missing_memofile=True,
-                    char_decode_errors='ignore'  # <--- O ESCUDO DEFINITIVO
+                    char_decode_errors='ignore'
                 )
                 
-                # Como a biblioteca já tratou os erros, podemos converter direto para Pandas
                 df_bd = pd.DataFrame(iter(dbf_table))
-                os.remove(tmp_path) # Limpa o rastro logo em seguida
+                os.remove(tmp_path)
                 
             elif bd_file.name.lower().endswith('.xlsx'):
                 df_bd = pd.read_excel(bd_file)
                 
             elif bd_file.name.lower().endswith('.csv'):
-                # CORREÇÃO APLICADA AQUI: encoding_errors em vez de errors
+                bd_file.seek(0)
                 df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1', encoding_errors='ignore')
             
-            # Padroniza NIP no BD (8 dígitos limpos) se a coluna existir
             if df_bd is not None and not df_bd.empty:
-                # Remove espaços dos nomes das colunas para evitar erros de busca
                 df_bd.columns = df_bd.columns.astype(str).str.strip()
                 
-                # Procura flexível pela coluna NIP
                 col_nip = next((col for col in df_bd.columns if col.lower() in ['nip', 'c_nip']), None)
                 if col_nip:
                     if col_nip != 'NIP':
