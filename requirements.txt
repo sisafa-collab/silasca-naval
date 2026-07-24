@@ -4,3 +4,4 @@ streamlit
 pytesseract
 pdf2image
 pillow
+openpyxl
