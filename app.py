@@ -272,14 +272,25 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                             else:
                                                 info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
                                                 if not info_cissfa.empty:
-                                                    if perc_cobrar == 100:
-                                                        valor_final = float(info_cissfa['Valor 100%'].values[0])
-                                                        status_cobranca = f"Indeniza 100% ({perfil_usu})"
-                                                    else:
-                                                        valor_final = float(info_cissfa['Valor 20%'].values[0])
-                                                        status_cobranca = f"Indeniza 20% ({perfil_usu})"
+                                                # Blindagem para limpar formatação de moeda do Excel (R$, espaços e vírgulas)
+                                                def limpar_moeda(v):
+                                                    v_str = str(v).upper().replace('R$', '').replace(' ', '')
+                                                    if '.' in v_str and ',' in v_str:
+                                                        v_str = v_str.replace('.', '') # Remove ponto de milhar (ex: 1.200,00 -> 1200,00)
+                                                    v_str = v_str.replace(',', '.') # Troca a vírgula decimal por ponto do Python
+                                                    try:
+                                                        return float(v_str)
+                                                    except:
+                                                        return 0.0
+
+                                                if perc_cobrar == 100:
+                                                    valor_final = limpar_moeda(info_cissfa['Valor 100%'].values[0])
+                                                    status_cobranca = f"Indeniza 100% ({perfil_usu})"
                                                 else:
-                                                    status_cobranca = f"Código {cod} não achado no CISSFA"
+                                                    valor_final = limpar_moeda(info_cissfa['Valor 20%'].values[0])
+                                                    status_cobranca = f"Indeniza 20% ({perfil_usu})"
+                                            else:
+                                                status_cobranca = f"Código {cod} não achado no CISSFA"
                                         else:
                                             status_cobranca = "NIP não achado no BD"
                                             
