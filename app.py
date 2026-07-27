@@ -203,7 +203,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                     is_fatura_tabela = bool(re.search(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo))
                     
                     if is_fatura_tabela:
-                        st.info("📄 Formato de Fatura/Relatório em Tabela detetado! A ler registos...")
+                        st.info("📄 Formato de Fatura/Relatório em Tabela detetado (Padrão LASALUS)! A ler registos...")
                         linhas = texto_completo.split('\n')
                         exames_encontrados = 0
                         
@@ -240,37 +240,58 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                     status_cobranca = "Não Avaliado"
                                     
                                     if nip_usu != "N/A":
-                                        info_militar = df_bd[df_bd['NIP'] == nip_usu]
+                                        # 🛡️ BUSCA INTELIGENTE: Procura o NIP tanto no Titular quanto no Dependente
+                                        cond_titular = df_bd.get('NIP_TIT,C,8', pd.Series(dtype=str)) == nip_usu
+                                        cond_depend = df_bd.get('NIP_VINC,C,8', pd.Series(dtype=str)) == nip_usu
+                                        info_militar = df_bd[cond_titular | cond_depend]
+                                        
                                         if not info_militar.empty:
-                                            regra_imh = str(info_militar['IMH,C,1'].values[0]).strip().upper() if 'IMH,C,1' in info_militar.columns else "S"
-                                            tipo_dep_bd = str(info_militar['TIPO_DEP'].values[0]).strip().upper() if 'TIPO_DEP' in info_militar.columns else "D"
+                                            registro = info_militar.iloc[0] # Pega o primeiro registro encontrado
                                             
+                                            regra_imh = str(registro.get('IMH,C,1', 'S')).strip().upper()
+                                            tipo_dep_raw = str(registro.get('TIPO_DEP,C,1', '')).strip().upper()
+                                            
+                                            # Define o Perfil do Paciente (Titular, D ou I)
+                                            if tipo_dep_raw in ['NAN', 'NONE', 'NULL', '']:
+                                                perfil_usu = "Titular"
+                                                perc_cobrar = 20
+                                            elif tipo_dep_raw == 'D':
+                                                perfil_usu = "Dep. Direto"
+                                                perc_cobrar = 20
+                                            elif tipo_dep_raw == 'I':
+                                                perfil_usu = "Dep. Indireto"
+                                                perc_cobrar = 100
+                                            else:
+                                                perfil_usu = f"Outro ({tipo_dep_raw})"
+                                                perc_cobrar = 100 # Proteção padrão
+                                                
+                                            # Aplica as Regras Financeiras
                                             if regra_imh == 'N':
                                                 valor_final = 0.0
-                                                status_cobranca = "NÃO INDENIZA (Isento)"
+                                                status_cobranca = f"NÃO INDENIZA (Isento IMH) - {perfil_usu}"
                                             else:
                                                 info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
                                                 if not info_cissfa.empty:
-                                                    if tipo_dep_bd == 'I':
-                                                        valor_final = info_cissfa['Valor 100%'].values[0]
-                                                        status_cobranca = "Indeniza 100%"
+                                                    if perc_cobrar == 100:
+                                                        valor_final = float(info_cissfa['Valor 100%'].values[0])
+                                                        status_cobranca = f"Indeniza 100% ({perfil_usu})"
                                                     else:
-                                                        valor_final = info_cissfa['Valor 20%'].values[0]
-                                                        status_cobranca = "Indeniza 20%"
+                                                        valor_final = float(info_cissfa['Valor 20%'].values[0])
+                                                        status_cobranca = f"Indeniza 20% ({perfil_usu})"
                                                 else:
-                                                    status_cobranca = "Código TUSS não achado no CISSFA"
+                                                    status_cobranca = f"Código {cod} não achado no CISSFA"
                                         else:
                                             status_cobranca = "NIP não achado no BD"
                                             
                                     st.write(f"👤 **{nome_usu}** | NIP: `{nip_usu}`")
-                                    st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final})")
+                                    st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final:,.2f})")
                                     
                                     # Armazena na lista global
                                     dados_consolidados_lasalus.append({
                                         "Ficheiro Origem": pdf_carregado.name,
                                         "NIP": nip_usu,
                                         "Nome do Usuário": nome_usu,
-                                        "Código TUSS": cod,
+                                        "Código (CISSFA)": cod,
                                         "Descrição Exame": desc_limpa,
                                         "Status Cálculo": status_cobranca,
                                         "Valor Cobrado (R$)": valor_final
@@ -320,34 +341,53 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                                 if cod == nip_usu: continue 
                                                 desc_limpa = re.sub(r'[_\|]+', '', desc).strip()
                                                 
-                                                # CRUZAMENTO IGUAL AO DA TABELA
+                                                # ===============================================================
+                                                # 🎯 REGRA DE NEGÓCIO: CRUZAMENTO MB CLÁSSICA
+                                                # ===============================================================
                                                 valor_final = 0.0
                                                 status_cobranca = "Não Avaliado"
                                                 
                                                 if nip_usu != "N/A":
-                                                    info_militar = df_bd[df_bd['NIP'] == nip_usu]
+                                                    cond_titular = df_bd.get('NIP_TIT,C,8', pd.Series(dtype=str)) == nip_usu
+                                                    cond_depend = df_bd.get('NIP_VINC,C,8', pd.Series(dtype=str)) == nip_usu
+                                                    info_militar = df_bd[cond_titular | cond_depend]
+                                                    
                                                     if not info_militar.empty:
-                                                        regra_imh = str(info_militar['IMH,C,1'].values[0]).strip().upper() if 'IMH,C,1' in info_militar.columns else "S"
-                                                        tipo_dep_bd = str(info_militar['TIPO_DEP'].values[0]).strip().upper() if 'TIPO_DEP' in info_militar.columns else "D"
+                                                        registro = info_militar.iloc[0]
+                                                        regra_imh = str(registro.get('IMH,C,1', 'S')).strip().upper()
+                                                        tipo_dep_raw = str(registro.get('TIPO_DEP,C,1', '')).strip().upper()
                                                         
+                                                        if tipo_dep_raw in ['NAN', 'NONE', 'NULL', '']:
+                                                            perfil_usu = "Titular"
+                                                            perc_cobrar = 20
+                                                        elif tipo_dep_raw == 'D':
+                                                            perfil_usu = "Dep. Direto"
+                                                            perc_cobrar = 20
+                                                        elif tipo_dep_raw == 'I':
+                                                            perfil_usu = "Dep. Indireto"
+                                                            perc_cobrar = 100
+                                                        else:
+                                                            perfil_usu = f"Outro ({tipo_dep_raw})"
+                                                            perc_cobrar = 100
+                                                            
                                                         if regra_imh == 'N':
                                                             valor_final = 0.0
-                                                            status_cobranca = "NÃO INDENIZA (Isento)"
+                                                            status_cobranca = f"NÃO INDENIZA (Isento IMH) - {perfil_usu}"
                                                         else:
                                                             info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
                                                             if not info_cissfa.empty:
-                                                                if tipo_dep_bd == 'I':
-                                                                    valor_final = info_cissfa['Valor 100%'].values[0]
-                                                                    status_cobranca = "Indeniza 100%"
+                                                                if perc_cobrar == 100:
+                                                                    valor_final = float(info_cissfa['Valor 100%'].values[0])
+                                                                    status_cobranca = f"Indeniza 100% ({perfil_usu})"
                                                                 else:
-                                                                    valor_final = info_cissfa['Valor 20%'].values[0]
-                                                                    status_cobranca = "Indeniza 20%"
+                                                                    valor_final = float(info_cissfa['Valor 20%'].values[0])
+                                                                    status_cobranca = f"Indeniza 20% ({perfil_usu})"
                                                             else:
-                                                                status_cobranca = "Código TUSS não achado no CISSFA"
+                                                                status_cobranca = f"Código {cod} não achado no CISSFA"
                                                     else:
                                                         status_cobranca = "NIP não achado no BD"
                                                         
-                                                st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final})")
+                                                st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final:,.2f})")
                                                 
                                                 dados_consolidados_lasalus.append({
                                                     "Arquivo Origem": pdf_carregado.name,
