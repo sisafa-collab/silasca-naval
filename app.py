@@ -104,8 +104,6 @@ if df_cissfa is not None:
 else:
     st.warning("⚠️ Operação da tabela CISSFA interrompida.")
     
-
-
 st.markdown("### 🗄️ Upload do Banco de Dados")
 bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
 
@@ -207,32 +205,34 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                         linhas = texto_completo.split('\n')
                         exames_encontrados = 0
                         
+                        # --- 1. CAPTURA DO CABEÇALHO (NIP E NOME FICAM AQUI, FORA DA TABELA) ---
+                        match_nip = re.search(r'NIP[.\s:]*(\d{8})', texto_completo)
+                        nip_usu = match_nip.group(1) if match_nip else "N/A"
+                        
+                        match_nome = re.search(r'Paciente[.\s]*:([A-Za-zÀ-Úà-ú\s]+)', texto_completo)
+                        if match_nome:
+                            nome_usu = match_nome.group(1).replace('Idade', '').replace('idade', '').strip()
+                        else:
+                            nome_usu = "Não identificado"
+                        
                         with st.container(border=True):
                             for linha in linhas:
-                                # Procura dois números de 8 dígitos na mesma linha (ID EXAME e NIP)
-                                numeros_8_dig = re.findall(r'\b\d{8}\b', linha)
+                                # --- 2. CAPTURA DAS LINHAS DE EXAME (Linhas com apenas 1 código TUSS) ---
+                                match_linha = re.search(r'\b(\d{8})\b\s+(.*)', linha)
                                 
-                                if len(numeros_8_dig) >= 2:
-                                    # Pela ordem da tabela da imagem: 1º é ID EXAME, 2º é NIP
-                                    cod = numeros_8_dig[0]
-                                    nip_usu = numeros_8_dig[1]
+                                if match_linha:
+                                    cod = match_linha.group(1)
                                     
-                                    # Regex ninja para capturar tudo entre o TUSS e o NIP (Descrição) e o Nome
-                                    match_linha = re.search(rf'{cod}\s+(.+?)\s+{nip_usu}\s+(.+?)(?:\s+\d{{2}}/\d{{2}}/\d{{2,4}}|$)', linha)
-                                    
-                                    if match_linha:
-                                        desc_limpa = match_linha.group(1).strip()
-                                        nome_bruto = match_linha.group(2).strip()
-                                        # Limpa sujidades do nome do paciente
-                                        nome_usu = re.sub(r'[^A-Za-zÀ-Úà-ú\s]', '', nome_bruto).strip()
-                                    else:
-                                        desc_limpa = "Descrição extraída com ruído"
-                                        nome_usu = "Nome extraído com ruído"
+                                    # Evita que ele leia a linha do próprio NIP no cabeçalho como se fosse um exame
+                                    if cod == nip_usu:
+                                        continue
                                         
-                                    if not nome_usu: nome_usu = "Não identificado"
+                                    desc_bruta = match_linha.group(2)
+                                    # Corta os números/valores do final da linha da fatura (Ex: limpa o " 33,00")
+                                    desc_limpa = re.sub(r'\s+[\d\,\.]+$', '', desc_bruta).strip()
                                     
-                                    exames_encontrados += 1
-                                    
+                                    exames_encontrados += 1    
+                                
                                     # ===============================================================
                                     # 🎯 REGRA DE NEGÓCIO: CRUZAMENTO COM BD E CISSFA
                                     # ===============================================================
