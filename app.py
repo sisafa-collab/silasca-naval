@@ -7,6 +7,7 @@ import base64
 import pandas as pd
 from dbfread import DBF
 import tempfile
+import difflib  # Biblioteca nativa do Python para busca flexível/aproximada (Fuzzy Match.. útil para documentos mal escaneados)
 
 # =================================================================
 # ⚓ SEÇÃO VISUAL E IDENTIDADE (TOPO CENTRALIZADO & SLOGAN FIXO)
@@ -202,136 +203,140 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                     if is_fatura_tabela:
                         st.info("📄 Formato de Fatura/Relatório em Tabela detetado (Padrão LASALUS)! A ler registos...")
                         
-                        # FATIAMENTO DO PDF: Divide o texto inteiro em blocos de cada paciente/guia
                         blocos_lasalus = re.split(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo)
-                        
-                        # Remove o primeiro bloco vazio caso o split gere um
                         if blocos_lasalus and len(blocos_lasalus[0].strip()) < 50:
                             blocos_lasalus = blocos_lasalus[1:]
                             
                         for i, bloco in enumerate(blocos_lasalus, 1):
                             exames_encontrados = 0
                             
-                            # --- 1. CAPTURA DO CABEÇALHO DAQUELA GUIA ---
                             match_nip = re.search(r'NIP[.\s:]*(\d{8})', bloco)
                             nip_usu = match_nip.group(1) if match_nip else "N/A"
-                            
                             match_nome = re.search(r'Paciente[.\s]*:([A-Za-zÀ-Úà-ú\s]+)', bloco)
                             nome_usu = match_nome.group(1).replace('Idade', '').replace('idade', '').strip() if match_nome else "Não identificado"
                             
-                            # Se não achou NIP, pula pro próximo bloco
                             if nip_usu == "N/A":
                                 continue
                                 
                             with st.container(border=True):
-                                # Corta a parte superior inútil do texto e foca só na tabela de exames
                                 inicio_tabela = re.search(r'(?i)(?:CÓDIGO\s+DESCRIÇÃO|Relação\s+de\s+exame)', bloco)
                                 if inicio_tabela:
                                     texto_tabela = bloco[inicio_tabela.end():]
                                     linhas = texto_tabela.split('\n')
                                     
                                     for linha in linhas:
-                                        # Para se achar a assinatura ou o fim da guia
                                         if re.search(r'(?i)(?:Guia\s+autorizada|IMPORTANTE|Declaro\s+que|Assinatura)', linha):
                                             break
                                             
-                                        # --- 2. CAPTURA DAS LINHAS DE EXAME ---
-                                        # Procura especificamente linhas que comecem com 8 dígitos seguidos de um espaço e letras
-                                        match_linha = re.search(r'^\s*(\d{8})\s+([A-Za-zÀ-Úà-ú].*)', linha)
+                                        # ⚓ REGEX CEGO: Aceita códigos pela metade ou até linhas sem código (Ex: "PELIP PERFIL LIDÍDICO")
+                                        match_linha = re.search(r'^\s*(?:([A-Za-z0-9]{3,10})\s+)?([A-Za-zÀ-Úà-ú].*)', linha)
                                         
                                         if match_linha:
-                                            cod = match_linha.group(1)
-                                            if cod == nip_usu:
-                                                continue # Previne loop duplo
+                                            cod_ocr = match_linha.group(1) if match_linha.group(1) else ""
+                                            if cod_ocr == nip_usu:
+                                                continue 
                                                 
                                             desc_bruta = match_linha.group(2)
-                                            # Limpa os valores monetários do fim da string
-                                            desc_limpa = re.sub(r'\s+[\d\,\.]+$', '', desc_bruta).strip()
+                                            # Limpa valores monetários e lixo do final da linha
+                                            desc_limpa = re.sub(r'[\s\d\,\.\-]+$', '', desc_bruta).strip()
                                             
                                             exames_encontrados += 1
                                             
                                             # ===============================================================
-                                            # 🎯 REGRA DE NEGÓCIO: CRUZAMENTO COM BD E CISSFA
+                                            # 🎯 REGRA DE NEGÓCIO E BUSCA FUZZY
                                             # ===============================================================
                                             valor_final = 0.0
                                             status_cobranca = "Não Avaliado"
+                                            cod_final = cod_ocr
+                                            desc_final = desc_limpa
+                                            perfil_usu = "Desconhecido"
                                             
-                                            # 🛡️ BUSCA INTELIGENTE: CRUZAMENTO NIP + NOME
-                                            cond_titular = df_bd.get('NIP_TIT,C,8', pd.Series(dtype=str)) == nip_usu
-                                            cond_depend = df_bd.get('NIP_VINC,C,8', pd.Series(dtype=str)) == nip_usu
-                                            info_militar = df_bd[cond_titular | cond_depend]
-                                            
-                                            # Garante que vai pegar a linha onde o nome lido bate (mesmo se for parecido) com a coluna NOME
-                                            # (Como Titular e Dep podem ter o mesmo NIP_TIT, cruzamos com a coluna 'NOME,C,80')
-                                            if not info_militar.empty:
-                                                # Encontra o paciente correto dentro dos resultados do NIP
-                                                # Tenta encontrar correspondência exata do primeiro nome para evitar bugs
-                                                primeiro_nome_ocr = nome_usu.split()[0].upper()
-                                                registro = info_militar.iloc[0] # Fallback para o primeiro
+                                            if nip_usu != "N/A":
+                                                cond_titular = df_bd.get('NIP_TIT,C,8', pd.Series(dtype=str)) == nip_usu
+                                                cond_depend = df_bd.get('NIP_VINC,C,8', pd.Series(dtype=str)) == nip_usu
+                                                info_militar = df_bd[cond_titular | cond_depend]
                                                 
-                                                for idx, row in info_militar.iterrows():
-                                                    nome_bd = str(row.get('NOME,C,80', '')).upper()
-                                                    if primeiro_nome_ocr in nome_bd:
-                                                        registro = row
-                                                        break
-                                                        
-                                                regra_imh = str(registro.get('IMH,C,1', 'S')).strip().upper()
-                                                tipo_dep_raw = str(registro.get('TIPO_DEP,C,1', '')).strip().upper()
-                                                
-                                                # Define o Perfil do Paciente (O Segredo do Titular Vazio)
-                                                if tipo_dep_raw in ['NAN', 'NONE', 'NULL', ''] or len(tipo_dep_raw) == 0:
-                                                    perfil_usu = "Titular"
-                                                    perc_cobrar = 20
-                                                elif tipo_dep_raw == 'D':
-                                                    perfil_usu = "Dep. Direto"
-                                                    perc_cobrar = 20
-                                                elif tipo_dep_raw == 'I':
-                                                    perfil_usu = "Dep. Indireto"
-                                                    perc_cobrar = 100
-                                                else:
-                                                    perfil_usu = f"Outro ({tipo_dep_raw})"
-                                                    perc_cobrar = 100 
+                                                if not info_militar.empty:
+                                                    primeiro_nome_ocr = nome_usu.split()[0].upper()
+                                                    registro = info_militar.iloc[0] 
+                                                    for idx, row in info_militar.iterrows():
+                                                        if primeiro_nome_ocr in str(row.get('NOME,C,80', '')).upper():
+                                                            registro = row
+                                                            break
+                                                            
+                                                    regra_imh = str(registro.get('IMH,C,1', 'S')).strip().upper()
+                                                    tipo_dep_raw = str(registro.get('TIPO_DEP,C,1', '')).strip().upper()
                                                     
-                                                if regra_imh == 'N':
-                                                    valor_final = 0.0
-                                                    status_cobranca = f"NÃO INDENIZA (Isento IMH) - {perfil_usu}"
-                                                else:
-                                                    info_cissfa = df_cissfa[df_cissfa['Código'] == cod]
-                                                    if not info_cissfa.empty:
-                                                        def limpar_moeda(v):
-                                                            v_str = str(v).upper().replace('R$', '').replace(' ', '')
-                                                            if '.' in v_str and ',' in v_str:
-                                                                v_str = v_str.replace('.', '') 
-                                                            v_str = v_str.replace(',', '.') 
-                                                            try:
-                                                                return float(v_str)
-                                                            except:
-                                                                return 0.0
-
-                                                        if perc_cobrar == 100:
-                                                            valor_final = limpar_moeda(info_cissfa['Valor 100%'].values[0])
-                                                            status_cobranca = f"Indeniza 100% ({perfil_usu})"
-                                                        else:
-                                                            valor_final = limpar_moeda(info_cissfa['Valor 20%'].values[0])
-                                                            status_cobranca = f"Indeniza 20% ({perfil_usu})"
+                                                    if tipo_dep_raw in ['NAN', 'NONE', 'NULL', ''] or len(tipo_dep_raw) == 0:
+                                                        perfil_usu = "Titular"
+                                                        perc_cobrar = 20
+                                                    elif tipo_dep_raw == 'D':
+                                                        perfil_usu = "Dep. Direto"
+                                                        perc_cobrar = 20
                                                     else:
-                                                        status_cobranca = f"Código {cod} não achado no CISSFA"
-                                            else:
-                                                status_cobranca = "NIP não achado no BD"
-                                                
-                                            st.write(f"👤 **{nome_usu}** | NIP: `{nip_usu}`")
-                                            st.caption(f"🔹 `{cod}` - {desc_limpa} -> **{status_cobranca}** (R$ {valor_final:,.2f})")
+                                                        perfil_usu = "Dep. Indireto"
+                                                        perc_cobrar = 100
+                                                        
+                                                    if regra_imh == 'N':
+                                                        valor_final = 0.0
+                                                        status_cobranca = f"NÃO INDENIZA (Isento) - {perfil_usu}"
+                                                    else:
+                                                        # -----------------------------------------------------
+                                                        # 🧠 MOTOR FUZZY DE APROXIMAÇÃO
+                                                        # -----------------------------------------------------
+                                                        info_cissfa = pd.DataFrame()
+                                                        
+                                                        # Tenta casar o código exato primeiro
+                                                        if cod_ocr and len(cod_ocr) >= 6:
+                                                            match_cod = df_cissfa[df_cissfa['Código'].astype(str).str.contains(cod_ocr, na=False)]
+                                                            if not match_cod.empty:
+                                                                info_cissfa = match_cod
+                                                        
+                                                        # SE FALHOU O CÓDIGO, BUSCA PELA DESCRIÇÃO COM TOLERÂNCIA A ERROS
+                                                        if info_cissfa.empty:
+                                                            opcoes_desc = df_cissfa['Descrição'].dropna().astype(str).tolist()
+                                                            # Procura com similaridade mínima de 40% (cutoff=0.4)
+                                                            match_desc = difflib.get_close_matches(desc_limpa.upper(), opcoes_desc, n=1, cutoff=0.4)
+                                                            
+                                                            if match_desc:
+                                                                info_cissfa = df_cissfa[df_cissfa['Descrição'] == match_desc[0]]
+                                                                
+                                                        # Se achou de um jeito ou de outro, calcula!
+                                                        if not info_cissfa.empty:
+                                                            cod_final = str(info_cissfa['Código'].values[0])
+                                                            desc_final = str(info_cissfa['Descrição'].values[0])
+                                                            
+                                                            def limpar_moeda(v):
+                                                                v_str = str(v).upper().replace('R$', '').replace(' ', '')
+                                                                if '.' in v_str and ',' in v_str: v_str = v_str.replace('.', '') 
+                                                                v_str = v_str.replace(',', '.') 
+                                                                try: return float(v_str)
+                                                                except: return 0.0
+
+                                                            if perc_cobrar == 100:
+                                                                valor_final = limpar_moeda(info_cissfa['Valor 100%'].values[0])
+                                                                status_cobranca = f"Indeniza 100% ({perfil_usu})"
+                                                            else:
+                                                                valor_final = limpar_moeda(info_cissfa['Valor 20%'].values[0])
+                                                                status_cobranca = f"Indeniza 20% ({perfil_usu})"
+                                                        else:
+                                                            status_cobranca = "Exame não localizado na CISSFA"
+                                                else:
+                                                    status_cobranca = "NIP não achado no BD"
+                                                    
+                                            st.caption(f"🔹 Lido OCR: `{cod_ocr}` {desc_limpa} ➡️ **Oficial CISSFA:** `{cod_final}` {desc_final} (R$ {valor_final:,.2f})")
                                             
+                                            # Salva o resultado final num formato para edição
                                             dados_consolidados_lasalus.append({
-                                                "Ficheiro Origem": pdf_carregado.name,
+                                                "Arquivo": pdf_carregado.name,
                                                 "NIP": nip_usu,
-                                                "Nome do Usuário": nome_usu,
-                                                "Código (CISSFA)": cod,
-                                                "Descrição Exame": desc_limpa,
-                                                "Status Cálculo": status_cobranca,
-                                                "Valor Cobrado (R$)": valor_final
+                                                "Nome Paciente": nome_usu,
+                                                "Código (CISSFA)": cod_final,   # <-- ESTA SERÁ A COLUNA EDITÁVEL!
+                                                "Descrição Exame": desc_final,
+                                                "Status": status_cobranca,
+                                                "Valor (R$)": valor_final,
+                                                "Perfil": perfil_usu
                                             })
-                                            
                                 if exames_encontrados == 0:
                                     st.warning(f"⚠️ A guia de {nome_usu} foi lida, mas nenhum exame foi detetado sob ela.")
 
@@ -452,6 +457,65 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
 
                 except Exception as e:
                     st.error(f"Erro ao processar {pdf_carregado.name}: {e}")
+
+# =================================================================================
+# ✍️ PAINEL DO AUDITOR MILITAR (EDIÇÃO E RECALCULO AUTOMÁTICO)
+# =================================================================================
+if dados_consolidados_lasalus:
+    st.divider()
+    st.markdown("### ✍️ Painel de Correção de Faturamento")
+    st.info("💡 **Atenção:** Se o sistema puxou o exame errado, clique na coluna **'Código (CISSFA)'** na tabela abaixo, digite o código correto e clique fora. O sistema vai refazer a conta e atualizar a descrição na hora! Que beleza, meus amigos!")
+    
+    # Transforma os dados em DataFrame para o Editor
+    df_resultados = pd.DataFrame(dados_consolidados_lasalus)
+    
+    # Cria a Tabela Editável
+    df_editado = st.data_editor(
+        df_resultados,
+        column_config={
+            "Código (CISSFA)": st.column_config.TextColumn("Código (CISSFA) - ✏️ EDITE AQUI", required=True),
+        },
+        # Tranca as outras colunas para o usuário não mexer e quebrar o sistema
+        disabled=["Arquivo", "NIP", "Nome Paciente", "Descrição Exame", "Status", "Valor (R$)", "Perfil"],
+        hide_index=True,
+        use_container_width=True,
+        key="auditoria_editor"
+    )
+    
+    # -----------------------------------------------------
+    # 🔄 MOTOR DE RECALCULO (Dispara quando você edita)
+    # -----------------------------------------------------
+    for i in range(len(df_editado)):
+        cod_antigo = str(df_resultados.iloc[i]["Código (CISSFA)"]).strip()
+        cod_novo = str(df_editado.iloc[i]["Código (CISSFA)"]).strip()
+        
+        # Se o auditor digitou um código diferente na tabela...
+        if cod_novo != cod_antigo and cod_novo != "":
+            nova_info = df_cissfa[df_cissfa['Código'].astype(str) == cod_novo]
+            
+            if not nova_info.empty:
+                # Recalcula a grana com base no perfil do paciente daquela linha
+                perfil_atual = df_editado.iloc[i]["Perfil"]
+                perc_cobrar = 100 if "Indireto" in perfil_atual else 20
+                
+                # Reaproveitamento seguro da função de limpar moeda
+                v_bruto = nova_info[f'Valor {perc_cobrar}%'].values[0]
+                v_str = str(v_bruto).upper().replace('R$', '').replace(' ', '')
+                if '.' in v_str and ',' in v_str: v_str = v_str.replace('.', '')
+                v_str = v_str.replace(',', '.')
+                try: novo_valor = float(v_str)
+                except: novo_valor = 0.0
+                
+                nova_desc = str(nova_info['Descrição'].values[0])
+                
+                st.success(f"✅ Atualização na linha {i+1}: Exame alterado para **{nova_desc}** (R$ {novo_valor:,.2f})")
+                
+                # Injeta a correção no DataFrame final!
+                df_editado.at[i, "Descrição Exame"] = nova_desc
+                df_editado.at[i, "Valor (R$)"] = novo_valor
+                df_editado.at[i, "Status"] = f"Corrigido à Mão - Indeniza {perc_cobrar}%"
+            else:
+                st.error(f"❌ O código '{cod_novo}' digitado não existe na tabela CISSFA!")
 
 # =================================================================
 # 📥 MÓDULO DE EXPORTAÇÃO (PLANILHA FINAL LASALUS)
