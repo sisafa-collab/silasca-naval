@@ -129,11 +129,13 @@ if bd_file:
                 os.remove(tmp_path)
                 
             elif bd_file.name.lower().endswith('.xlsx'):
-                df_bd = pd.read_excel(bd_file)
+                df_bd = pd.read_excel(bd_file, dtype=str)
+                
                 
             elif bd_file.name.lower().endswith('.csv'):
                 bd_file.seek(0)
-                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1', encoding_errors='ignore')
+                # 🛑 O PULO DO GATO: dtype=str força o Pandas a ler TUDO como texto puro!
+                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1', dtype=str)
             
             if df_bd is not None and not df_bd.empty:
                 df_bd.columns = df_bd.columns.astype(str).str.strip()
