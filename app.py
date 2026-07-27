@@ -182,7 +182,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
             with st.spinner(f"A executar varredura OCR em {pdf_carregado.name}..."):
                 try:
                     pdf_bytes = pdf_carregado.read()
-                    paginas = convert_from_bytes(pdf_bytes)
+                    paginas = convert_from_bytes(pdf_bytes, dpi=150)
                     
                     texto_completo = ""
                     for idx, imagem_pagina in enumerate(paginas):
