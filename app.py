@@ -95,8 +95,16 @@ def carregar_tabela_referencia():
 df_cissfa = carregar_tabela_referencia()
 if df_cissfa is not None:
     st.success("✅ Tabela CISSFA carregada com sucesso!")
+    # 🔍 PAINEL DE AUDITORIA DO CISSFA
+    with st.expander("🔎 O que o sistema leu na Tabela CISSFA?"):
+        st.write(f"**Total de registros carregados:** {df_cissfa.shape[0]} linhas e {df_cissfa.shape[1]} colunas.")
+        st.write("**Colunas reconhecidas:**", list(df_cissfa.columns))
+        st.markdown("**Amostra dos dados (Primeiras 50 linhas):**")
+        st.dataframe(df_cissfa.head(50))
 else:
     st.warning("⚠️ Operação da tabela CISSFA interrompida.")
+    
+
 
 st.markdown("### 🗄️ Upload do Banco de Dados")
 bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
@@ -137,7 +145,18 @@ if bd_file:
                     df_bd['NIP'] = df_bd['NIP'].astype(str).str.strip().str.zfill(8)
                     
             st.success("✅ Banco de Dados carregado na memória com sucesso!")
-            
+            # 🔍 PAINEL DE AUDITORIA DO BANCO DE DADOS (BD)
+            with st.expander("🔎 O que o sistema leu no Banco de Dados (BD)?"):
+                st.write(f"**Arquivo processado:** `{bd_file.name}`")
+                st.write(f"**Dimensões da base:** {df_bd.shape[0]} linhas e {df_bd.shape[1]} colunas.")
+                st.write("**Colunas reconhecidas:**", list(df_bd.columns))
+                if 'NIP' in df_bd.columns:
+                    st.info("✅ Coluna NIP identificada e padronizada com 8 dígitos.")
+                else:
+                    st.warning("⚠️ Atenção: A coluna NIP não foi encontrada automaticamente com esse nome.")
+                st.markdown("**Amostra dos dados (Primeiras 50 linhas):**")
+                st.dataframe(df_bd.head(50))
+
         except Exception as e:
             st.error(f"Erro ao processar o BD: {e}")
 
