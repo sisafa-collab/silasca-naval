@@ -189,6 +189,9 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                         texto_pagina = pytesseract.image_to_string(imagem_pagina, lang='por')
                         texto_completo += f"\n--- INÍCIO DA PÁGINA {idx + 1} ---\n{texto_pagina}\n"
                     
+                    busca_data = re.search(r'(\d{2}/\d{2}/\d{4})', texto_completo)
+                    data_fatura = busca_data.group(1) if busca_data else "Data_Não_Encontrada"
+                    
                     # ==========================================================
                     # 👁️ RAIO-X DO RADAR (TEXTO BRUTO DO OCR)
                     # ==========================================================
@@ -318,6 +321,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                             
                                             # Salva o resultado unificado
                                             dados_consolidados_lasalus.append({
+                                                "Data": data_fatura,  
                                                 "Arquivo": pdf_carregado.name,
                                                 "NIP": nip_usu,
                                                 "Nome Paciente": nome_usu,
@@ -443,6 +447,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                                 
                                                 # MESMO FORMATO DA LASALUS (Impede quebra do painel)
                                                 dados_consolidados_lasalus.append({
+                                                    "Data": data_fatura,  # <--- ENCAIXE 3 AQUI
                                                     "Arquivo": pdf_carregado.name,
                                                     "NIP": nip_usu,
                                                     "Nome Paciente": nome_usu,
@@ -464,19 +469,20 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
 if dados_consolidados_lasalus:
     st.divider()
     st.markdown("### ✍️ Painel de Correção de Faturamento")
-    st.info("💡 **Atenção:** Se o sistema puxou o exame errado, clique na coluna **'Código (CISSFA)'** na tabela abaixo, digite o código correto e clique fora. O sistema vai refazer a conta e atualizar a descrição na hora! Que beleza, meus amigos!")
+    st.info("💡 **Atenção:** Clique na coluna **'NIP'** para trocar o militar, ou na coluna **'Código (CISSFA)'** para corrigir o exame. O sistema refaz a conta e puxa os nomes na hora!")
     
     # Transforma os dados em DataFrame para o Editor
     df_resultados = pd.DataFrame(dados_consolidados_lasalus)
     
-    # Cria a Tabela Editável
+    # Cria a Tabela Editável (Agora o NIP também é editável)
     df_editado = st.data_editor(
         df_resultados,
         column_config={
+            "NIP": st.column_config.TextColumn("NIP - ✏️ EDITE AQUI", required=True),
             "Código (CISSFA)": st.column_config.TextColumn("Código (CISSFA) - ✏️ EDITE AQUI", required=True),
         },
-        # Tranca as outras colunas para o usuário não mexer e quebrar o sistema
-        disabled=["Arquivo", "NIP", "Nome Paciente", "Descrição Exame", "Status", "Valor (R$)", "Perfil"],
+        # Tranca as colunas que o usuário não deve mexer
+        disabled=["Arquivo", "Nome Paciente", "Descrição Exame", "Status", "Valor (R$)", "Perfil"],
         hide_index=True,
         use_container_width=True,
         key="auditoria_editor"
@@ -486,56 +492,113 @@ if dados_consolidados_lasalus:
     # 🔄 MOTOR DE RECALCULO (Dispara quando você edita)
     # -----------------------------------------------------
     for i in range(len(df_editado)):
-        cod_antigo = str(df_resultados.iloc[i]["Código (CISSFA)"]).strip()
-        cod_novo = str(df_editado.iloc[i]["Código (CISSFA)"]).strip()
         
-        # Se o auditor digitou um código diferente na tabela...
-        if cod_novo != cod_antigo and cod_novo != "":
-            nova_info = df_cissfa[df_cissfa['Código'].astype(str) == cod_novo]
+        # --- 1. VERIFICAÇÃO DE MUDANÇA DE NIP ---
+        nip_antigo = str(df_resultados.iloc[i].get("NIP", "")).strip()
+        nip_novo = str(df_editado.iloc[i].get("NIP", "")).strip()
+        
+        if nip_novo != nip_antigo and nip_novo != "":
+            # Procura o NIP novo no Banco de Dados
+            # (Ajuste o nome das colunas 'NIP' e 'NOME' se no seu BD estiver diferente)
+            paciente = df_bd[df_bd['NIP'].astype(str).str.strip() == nip_novo]
+            
+            if not paciente.empty:
+                novo_nome = paciente['NOME'].values[0]
+                df_editado.at[i, "Nome Paciente"] = novo_nome
+                st.success(f"✅ Linha {i+1}: NIP corrigido. Paciente atualizado para **{novo_nome}**.")
+            else:
+                df_editado.at[i, "Nome Paciente"] = "NIP inexistente"
+                st.error(f"❌ Linha {i+1}: NIP '{nip_novo}' inexistente no Banco de Dados!")
+
+        # --- 2. VERIFICAÇÃO DE MUDANÇA DE CÓDIGO CISSFA ---
+        cod_antigo = str(df_resultados.iloc[i].get("Código (CISSFA)", "")).strip()
+        cod_novo = str(df_editado.iloc[i].get("Código (CISSFA)", "")).strip()
+        
+        if cod_novo != cod_antigo and cod_novo != "" and str(cod_novo).lower() != 'nan':
+            nova_info = df_cissfa[df_cissfa['CÓDIGO'].astype(str).str.strip() == cod_novo]
             
             if not nova_info.empty:
-                # Recalcula a grana com base no perfil do paciente daquela linha
-                perfil_atual = df_editado.iloc[i]["Perfil"]
+                perfil_atual = str(df_editado.iloc[i].get("Perfil", ""))
                 perc_cobrar = 100 if "Indireto" in perfil_atual else 20
                 
-                # Reaproveitamento seguro da função de limpar moeda
-                v_bruto = nova_info[f'Valor {perc_cobrar}%'].values[0]
+                v_bruto = nova_info[f'VALOR {perc_cobrar}%'].values[0]
                 v_str = str(v_bruto).upper().replace('R$', '').replace(' ', '')
                 if '.' in v_str and ',' in v_str: v_str = v_str.replace('.', '')
                 v_str = v_str.replace(',', '.')
                 try: novo_valor = float(v_str)
                 except: novo_valor = 0.0
                 
-                nova_desc = str(nova_info['Descrição'].values[0])
+                nova_desc = str(nova_info['DESCRIÇÃO'].values[0])
                 
                 st.success(f"✅ Atualização na linha {i+1}: Exame alterado para **{nova_desc}** (R$ {novo_valor:,.2f})")
                 
-                # Injeta a correção no DataFrame final!
                 df_editado.at[i, "Descrição Exame"] = nova_desc
                 df_editado.at[i, "Valor (R$)"] = novo_valor
                 df_editado.at[i, "Status"] = f"Corrigido à Mão - Indeniza {perc_cobrar}%"
             else:
-                st.error(f"❌ O código '{cod_novo}' digitado não existe na tabela CISSFA!")
+                st.error(f"❌ O código '{cod_novo}' não existe na tabela CISSFA!")
 
 # =================================================================
-# 📥 MÓDULO DE EXPORTAÇÃO (PLANILHA FINAL LASALUS)
+# 📥 MÓDULO DE EXPORTAÇÃO (FILTRADO E FORMATADO)
 # =================================================================
 if dados_consolidados_lasalus:
     st.divider()
-    st.markdown("### 📊 Tabela Consolidada de Faturamento")
+    st.markdown("### 📊 Tabela Pronta para Exportação (Final)")
     
-    df_final = pd.DataFrame(dados_consolidados_lasalus)
+    # 1. Copia o dataframe já editado/corrigido pelo auditor
+    df_pre_export = df_editado.copy()
     
-    # Mostra a tabela na tela para auditoria
-    st.dataframe(df_final, use_container_width=True)
+    # Garante que o valor é um número decimal para fazermos o filtro
+    df_pre_export['Valor (R$)'] = pd.to_numeric(df_pre_export['Valor (R$)'], errors='coerce').fillna(0)
     
-    # Gera o botão de Download Seguro (em memória, sem gravar no disco)
-    csv_memoria = df_final.to_csv(index=False).encode('utf-8')
+    # 2. FILTRO TÁTICO: Mantém APENAS valores maiores que zero
+    df_pre_export = df_pre_export[df_pre_export['Valor (R$)'] > 0]
+    
+    # 3. Monta o DataFrame final com as 6 colunas exatas que você pediu
+    df_export = pd.DataFrame()
+    
+    # (A) NIP
+    df_export["NIP (NNNNNNNN)"] = df_pre_export["NIP"]
+    
+    # (B) DATA
+    # Obs: Estou assumindo que o seu script já pegou a data e salvou na chave "Data". 
+    # Se não salvou, ele vai preencher com "DATA_A_DEFINIR" provisoriamente.
+    datas = df_pre_export.get("Data", "22/12/2022") 
+    df_export["DATA (DD/MM/AA)"] = datas
+    
+    # (C) VALOR
+    df_export["VALOR (R$)"] = df_pre_export["Valor (R$)"]
+    
+    # (D) OSE?
+    df_export["OSE? (s/n)"] = "s"
+    
+    # (E) DESCRIÇÃO COMPLETA
+    empresas = df_pre_export.get("Empresa", "LASALUS") # Pegando o nome da OSE
+    descricoes = df_pre_export["Descrição Exame"]
+    
+    df_export["DESCRIÇÃO"] = (
+        "Realização de exame laboratorial - " + 
+        descricoes.astype(str) + 
+        " - utilizado por usuário (a) do SSM, na empresa " + 
+        empresas.astype(str) + 
+        " no dia " + 
+        datas.astype(str) + "."
+    )
+    
+    # (F) NIP DEPENDENTE (Deixa em branco conforme a regra)
+    df_export["NIP DEPENDENTE (NNNNNNNN)"] = ""
+    
+    # Exibe a planilha lapidada na tela para o usuário ver o resultado do filtro
+    st.dataframe(df_export, use_container_width=True, hide_index=True)
+    
+    # Gera o arquivo CSV (usando ponto e vírgula para não bagunçar no Excel Brasileiro)
+    csv_memoria = df_export.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
+    
     st.download_button(
-        label="📥 Baixar Planilha Consolidada (CSV)",
+        label="📥 Baixar Planilha Consolidada (.CSV)",
         data=csv_memoria,
         file_name="faturamento_lasalus_auditado.csv",
         mime="text/csv",
     )
-elif pdfs_carregados and (df_bd is None or df_cissfa is None):
+elif 'pdfs_carregados' in locals() and pdfs_carregados and (df_bd is None or df_cissfa is None):
     st.warning("⚠️ Carregue o Banco de Dados e garanta que a CISSFA foi carregada para iniciar o cruzamento.")
