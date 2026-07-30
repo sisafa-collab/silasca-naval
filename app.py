@@ -539,7 +539,7 @@ if dados_consolidados_lasalus:
                 st.error(f"❌ O código '{cod_novo}' não existe na tabela CISSFA!")
 
     # =================================================================
-    # 📥 MÓDULO DE EXPORTAÇÃO
+    # 📥 MÓDULO DE EXPORTAÇÃO (FILTRADO E FORMATADO)
     # =================================================================
     if dados_consolidados_lasalus:
         st.divider()
@@ -554,18 +554,17 @@ if dados_consolidados_lasalus:
         # 2. FILTRO TÁTICO: Mantém APENAS valores maiores que zero
         df_pre_export = df_pre_export[df_pre_export['Valor (R$)'] > 0]
         
-        # 3. Monta o DataFrame final com as 6 colunas exatas que você pediu
+        # 3. Monta o DataFrame final com as 6 colunas exatas
         df_export = pd.DataFrame()
         
         # (A) NIP
         df_export["NIP (NNNNNNNN)"] = df_pre_export["NIP"]
         
-        # (B) DATA - Garantindo formato Series
+        # (B) DATA
         if "Data" in df_pre_export.columns:
             datas = df_pre_export["Data"].astype(str)
         else:
             datas = "DATA_A_DEFINIR"
-            
         df_export["DATA (DD/MM/AA)"] = datas
         
         # (C) VALOR
@@ -575,30 +574,38 @@ if dados_consolidados_lasalus:
         df_export["OSE? (s/n)"] = "s"
         
         # (E) DESCRIÇÃO COMPLETA
-        # CORREÇÃO: Trata a empresa de forma segura
         if "Empresa" in df_pre_export.columns:
             empresas = df_pre_export["Empresa"].astype(str)
         else:
-            empresas = "LASALUS" # Apenas a string
+            empresas = "LASALUS"
             
-        descricoes = df_pre_export["Descrição Exame"].astype(str)
+        # 🛡️ BLINDAGEM DO CSV: Removemos pontos e vírgulas (;) e quebras de linha (\n) 
+        # do texto do exame para o Excel não explodir as colunas!
+        descricoes_limpas = df_pre_export["Descrição Exame"].astype(str).replace(r'[\n\r;]', ' ', regex=True)
         
         df_export["DESCRIÇÃO"] = (
             "Realização de exame laboratorial - " + 
-            descricoes + 
+            descricoes_limpas + 
             " - utilizado por usuário (a) do SSM, na empresa " + 
             empresas + 
             " no dia " + 
             datas + "."
         )
         
-        # (F) NIP DEPENDENTE (Deixa em branco conforme a regra)
-        df_export["NIP DEPENDENTE (NNNNNNNN)"] = ""
+        # (F) NIP DEPENDENTE
+        # 🛡️ REGRA TÁTICA: Se a palavra 'Dep' estiver no perfil, preenche. Se for titular, fica vazio.
+        def classificar_nip_dep(row):
+            perfil = str(row.get("Perfil", ""))
+            if "Dep" in perfil:
+                return row["NIP"]
+            return ""
+            
+        df_export["NIP DEPENDENTE (NNNNNNNN)"] = df_pre_export.apply(classificar_nip_dep, axis=1)
         
         # Exibe a planilha lapidada na tela para o usuário ver o resultado do filtro
         st.dataframe(df_export, use_container_width=True, hide_index=True)
         
-        # Gera o arquivo CSV
+        # Gera o arquivo CSV (usando ponto e vírgula)
         csv_memoria = df_export.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
         
         st.download_button(
