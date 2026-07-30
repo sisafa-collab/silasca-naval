@@ -270,7 +270,7 @@ if pdfs_carregados and df_bd is not None and df_cissfa is not None:
                                                 info_militar = df_bd[cond_titular | cond_depend]
                                                 
                                                 if not info_militar.empty:
-                                                    primeiro_nome_ocr = nome_usu.split()[0].upper()
+                                                    primeiro_nome_ocr = nome_usu.split()[0].upper() if nome_usu.split() else ""
                                                     registro = info_militar.iloc[0] 
                                                     for idx, row in info_militar.iterrows():
                                                         if primeiro_nome_ocr in str(row.get('NOME,C,80', '')).upper():
@@ -538,67 +538,74 @@ if dados_consolidados_lasalus:
             else:
                 st.error(f"❌ O código '{cod_novo}' não existe na tabela CISSFA!")
 
-# =================================================================
-# 📥 MÓDULO DE EXPORTAÇÃO (FILTRADO E FORMATADO)
-# =================================================================
-if dados_consolidados_lasalus:
-    st.divider()
-    st.markdown("### 📊 Tabela Pronta para Exportação (Final)")
-    
-    # 1. Copia o dataframe já editado/corrigido pelo auditor
-    df_pre_export = df_editado.copy()
-    
-    # Garante que o valor é um número decimal para fazermos o filtro
-    df_pre_export['Valor (R$)'] = pd.to_numeric(df_pre_export['Valor (R$)'], errors='coerce').fillna(0)
-    
-    # 2. FILTRO TÁTICO: Mantém APENAS valores maiores que zero
-    df_pre_export = df_pre_export[df_pre_export['Valor (R$)'] > 0]
-    
-    # 3. Monta o DataFrame final com as 6 colunas exatas que você pediu
-    df_export = pd.DataFrame()
-    
-    # (A) NIP
-    df_export["NIP (NNNNNNNN)"] = df_pre_export["NIP"]
-    
-    # (B) DATA
-    # Obs: Estou assumindo que o seu script já pegou a data e salvou na chave "Data". 
-    # Se não salvou, ele vai preencher com "DATA_A_DEFINIR" provisoriamente.
-    datas = df_pre_export.get("Data", "22/12/2022") 
-    df_export["DATA (DD/MM/AA)"] = datas
-    
-    # (C) VALOR
-    df_export["VALOR (R$)"] = df_pre_export["Valor (R$)"]
-    
-    # (D) OSE?
-    df_export["OSE? (s/n)"] = "s"
-    
-    # (E) DESCRIÇÃO COMPLETA
-    empresas = df_pre_export.get("Empresa", "LASALUS") # Pegando o nome da OSE
-    descricoes = df_pre_export["Descrição Exame"]
-    
-    df_export["DESCRIÇÃO"] = (
-        "Realização de exame laboratorial - " + 
-        descricoes.astype(str) + 
-        " - utilizado por usuário (a) do SSM, na empresa " + 
-        empresas.astype(str) + 
-        " no dia " + 
-        datas.astype(str) + "."
-    )
-    
-    # (F) NIP DEPENDENTE (Deixa em branco conforme a regra)
-    df_export["NIP DEPENDENTE (NNNNNNNN)"] = ""
-    
-    # Exibe a planilha lapidada na tela para o usuário ver o resultado do filtro
-    st.dataframe(df_export, use_container_width=True, hide_index=True)
-    
-    # Gera o arquivo CSV (usando ponto e vírgula para não bagunçar no Excel Brasileiro)
-    csv_memoria = df_export.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
-    
-    st.download_button(
-        label="📥 Baixar Planilha Consolidada (.CSV)",
-        data=csv_memoria,
-        file_name="faturamento_lasalus_auditado.csv",
-        mime="text/csv",
-    )
+    # =================================================================
+    # 📥 MÓDULO DE EXPORTAÇÃO
+    # =================================================================
+    if dados_consolidados_lasalus:
+        st.divider()
+        st.markdown("### 📊 Tabela Pronta para Exportação (Final)")
+        
+        # 1. Copia o dataframe já editado/corrigido pelo auditor
+        df_pre_export = df_editado.copy()
+        
+        # Garante que o valor é um número decimal para fazermos o filtro
+        df_pre_export['Valor (R$)'] = pd.to_numeric(df_pre_export['Valor (R$)'], errors='coerce').fillna(0)
+        
+        # 2. FILTRO TÁTICO: Mantém APENAS valores maiores que zero
+        df_pre_export = df_pre_export[df_pre_export['Valor (R$)'] > 0]
+        
+        # 3. Monta o DataFrame final com as 6 colunas exatas que você pediu
+        df_export = pd.DataFrame()
+        
+        # (A) NIP
+        df_export["NIP (NNNNNNNN)"] = df_pre_export["NIP"]
+        
+        # (B) DATA - Garantindo formato Series
+        if "Data" in df_pre_export.columns:
+            datas = df_pre_export["Data"].astype(str)
+        else:
+            datas = "DATA_A_DEFINIR"
+            
+        df_export["DATA (DD/MM/AA)"] = datas
+        
+        # (C) VALOR
+        df_export["VALOR (R$)"] = df_pre_export["Valor (R$)"]
+        
+        # (D) OSE?
+        df_export["OSE? (s/n)"] = "s"
+        
+        # (E) DESCRIÇÃO COMPLETA
+        # CORREÇÃO: Trata a empresa de forma segura
+        if "Empresa" in df_pre_export.columns:
+            empresas = df_pre_export["Empresa"].astype(str)
+        else:
+            empresas = "LASALUS" # Apenas a string
+            
+        descricoes = df_pre_export["Descrição Exame"].astype(str)
+        
+        df_export["DESCRIÇÃO"] = (
+            "Realização de exame laboratorial - " + 
+            descricoes + 
+            " - utilizado por usuário (a) do SSM, na empresa " + 
+            empresas + 
+            " no dia " + 
+            datas + "."
+        )
+        
+        # (F) NIP DEPENDENTE (Deixa em branco conforme a regra)
+        df_export["NIP DEPENDENTE (NNNNNNNN)"] = ""
+        
+        # Exibe a planilha lapidada na tela para o usuário ver o resultado do filtro
+        st.dataframe(df_export, use_container_width=True, hide_index=True)
+        
+        # Gera o arquivo CSV
+        csv_memoria = df_export.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
+        
+        st.download_button(
+            label="📥 Baixar Planilha Consolidada (.CSV)",
+            data=csv_memoria,
+            file_name="faturamento_lasalus_auditado.csv",
+            mime="text/csv",
+        )
 elif 'pdfs_carregados' in locals() and pdfs_carregados and (df_bd is None or df_cissfa is None):
     st.warning("⚠️ Carregue o Banco de Dados e garanta que a CISSFA foi carregada para iniciar o cruzamento.")
