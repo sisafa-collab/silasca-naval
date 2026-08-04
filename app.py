@@ -108,6 +108,17 @@ else:
 st.markdown("### 🗄️ Upload do Banco de Dados")
 bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
 
+# Teste
+@st.cache_data
+def obter_opcoes_bd(df):
+    if 'NOME' in df.columns:
+        return (df['NIP'].astype(str) + " - " + df['NOME'].astype(str)).tolist()
+    return df['NIP'].astype(str).tolist()
+
+st.markdown("### 🗄️ Upload do Banco de Dados")
+bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
+
+
 # 🛡️ BLINDAGEM CONTRA LENTIDÃO: Função com Cache para ler o BD apenas UMA VEZ
 @st.cache_data
 def carregar_banco_dados(arquivo_bytes, nome_arquivo):
@@ -193,15 +204,6 @@ if bd_file:
                 st.markdown("**Amostra dos dados (Primeiras 50 linhas):**")
                 st.dataframe(df_bd.head(50))
 
-
-
-@st.cache_data
-def obter_opcoes_bd(df):
-    if 'NOME' in df.columns:
-        return (df['NIP'].astype(str) + " - " + df['NOME'].astype(str)).tolist()
-    return df['NIP'].astype(str).tolist()
-
-opcoes_bd = obter_opcoes_bd(df_bd)
 
 # =================================================================
 # ⚙️ ÁREA TÉCNICA: PROCESSADOR OCR E CRUZAMENTO DE DADOS
