@@ -116,8 +116,7 @@ def obter_opcoes_bd(df):
     return df['NIP'].astype(str).tolist()
 
 st.markdown("### 🗄️ Upload do Banco de Dados")
-bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
-
+bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"], key="bd_uploader_unico")
 
 # 🛡️ BLINDAGEM CONTRA LENTIDÃO: Função com Cache para ler o BD apenas UMA VEZ
 @st.cache_data
