@@ -173,7 +173,7 @@ def carregar_banco_dados(arquivo_bytes, nome_arquivo):
 
 df_bd = None
 if bd_file:
-    with st.spinner("Lendo Banco de Dados... (Isso ocorrerá apenas uma vez)"):
+    with st.spinner("Lendo Banco de Dados..."):
         # Lemos os bytes do arquivo para o cache poder memorizar
         bytes_bd = bd_file.getvalue()
         df_bd = carregar_banco_dados(bytes_bd, bd_file.name)
