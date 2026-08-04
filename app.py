@@ -108,70 +108,79 @@ else:
 st.markdown("### 🗄️ Upload do Banco de Dados")
 bd_file = st.file_uploader("Suba o arquivo BD (.dbf, .xlsx ou .csv)", type=["dbf", "xlsx", "csv"])
 
+# 🛡️ BLINDAGEM CONTRA LENTIDÃO: Função com Cache para ler o BD apenas UMA VEZ
+@st.cache_data
+def carregar_banco_dados(arquivo_bytes, nome_arquivo):
+    df_temp = None
+    try:
+        if nome_arquivo.lower().endswith('.dbf'):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".dbf") as tmp:
+                tmp.write(arquivo_bytes)
+                tmp_path = tmp.name
+            
+            dbf_table = DBF(
+                tmp_path, 
+                encoding='cp1252', 
+                ignore_missing_memofile=True,
+                char_decode_errors='ignore'
+            )
+            df_temp = pd.DataFrame(iter(dbf_table))
+            os.remove(tmp_path)
+            
+        elif nome_arquivo.lower().endswith('.xlsx'):
+            import io
+            df_temp = pd.read_excel(io.BytesIO(arquivo_bytes), dtype=str)
+            
+        elif nome_arquivo.lower().endswith('.csv'):
+            import io
+            df_temp = pd.read_csv(io.BytesIO(arquivo_bytes), sep=None, engine='python', encoding='latin-1', dtype=str)
+        
+        if df_temp is not None and not df_temp.empty:
+            df_temp.columns = df_temp.columns.astype(str).str.strip()
+            
+            # 🛡️ BLINDAGEM 1: Criar a coluna 'NIP' Mestre
+            col_nip_tit = next((col for col in df_temp.columns if col.upper().startswith('NIP_TIT')), None)
+            col_nip_vinc = next((col for col in df_temp.columns if col.upper().startswith('NIP_VINC')), None)
+            
+            if col_nip_tit and col_nip_vinc:
+                def extrair_nip_real(row):
+                    vinc = str(row.get(col_nip_vinc, "")).strip()
+                    if vinc and vinc.lower() not in ['nan', 'none', 'null', '0', '']:
+                        return vinc
+                    return str(row.get(col_nip_tit, "")).strip()
+                df_temp['NIP'] = df_temp.apply(extrair_nip_real, axis=1)
+            elif col_nip_tit:
+                df_temp['NIP'] = df_temp[col_nip_tit]
+            elif col_nip_vinc:
+                df_temp['NIP'] = df_temp[col_nip_vinc]
+            else:
+                col_gen = next((col for col in df_temp.columns if col.upper().split(',')[0] in ['NIP', 'C_NIP']), None)
+                if col_gen:
+                    df_temp['NIP'] = df_temp[col_gen]
+                    
+            if 'NIP' in df_temp.columns:
+                df_temp['NIP'] = df_temp['NIP'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.zfill(8)
+
+            # 🛡️ BLINDAGEM 2: Criar a coluna 'NOME' Mestre
+            col_nome_bd = next((col for col in df_temp.columns if col.upper().startswith('NOME')), None)
+            if col_nome_bd:
+                df_temp['NOME'] = df_temp[col_nome_bd]
+                
+        return df_temp
+    except Exception as e:
+        st.error(f"Erro ao processar o BD: {e}")
+        return None
+
 df_bd = None
 if bd_file:
-    with st.spinner("Lendo Banco de Dados..."):
-        try:
-            if bd_file.name.lower().endswith('.dbf'):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".dbf") as tmp:
-                    tmp.write(bd_file.read())
-                    tmp_path = tmp.name
-                
-                dbf_table = DBF(
-                    tmp_path, 
-                    encoding='cp1252', 
-                    ignore_missing_memofile=True,
-                    char_decode_errors='ignore'
-                )
-                
-                df_bd = pd.DataFrame(iter(dbf_table))
-                os.remove(tmp_path)
-                
-            elif bd_file.name.lower().endswith('.xlsx'):
-                df_bd = pd.read_excel(bd_file, dtype=str)
-                
-            elif bd_file.name.lower().endswith('.csv'):
-                bd_file.seek(0)
-                # 🛑 O PULO DO GATO: dtype=str força o Pandas a ler TUDO como texto puro!
-                df_bd = pd.read_csv(bd_file, sep=None, engine='python', encoding='latin-1', dtype=str)
-            
-            if df_bd is not None and not df_bd.empty:
-                df_bd.columns = df_bd.columns.astype(str).str.strip()
-                
-                # 🛡️ BLINDAGEM 1: Criar a coluna 'NIP' Mestre (Sem apagar as originais)
-                # O banco da MB separa Titular (NIP_TIT) e Dependente (NIP_VINC).
-                col_nip_tit = next((col for col in df_bd.columns if col.upper().startswith('NIP_TIT')), None)
-                col_nip_vinc = next((col for col in df_bd.columns if col.upper().startswith('NIP_VINC')), None)
-                
-                if col_nip_tit and col_nip_vinc:
-                    # Função tática: descobre quem é o dono real daquela linha no BD
-                    def extrair_nip_real(row):
-                        vinc = str(row.get(col_nip_vinc, "")).strip()
-                        if vinc and vinc.lower() not in ['nan', 'none', 'null', '0', '']:
-                            return vinc
-                        return str(row.get(col_nip_tit, "")).strip()
-                    df_bd['NIP'] = df_bd.apply(extrair_nip_real, axis=1)
-                elif col_nip_tit:
-                    df_bd['NIP'] = df_bd[col_nip_tit]
-                elif col_nip_vinc:
-                    df_bd['NIP'] = df_bd[col_nip_vinc]
-                else:
-                    # Tenta achar um NIP genérico caso seja outra planilha
-                    col_gen = next((col for col in df_bd.columns if col.upper().split(',')[0] in ['NIP', 'C_NIP']), None)
-                    if col_gen:
-                        df_bd['NIP'] = df_bd[col_gen]
-                        
-                # Formata a nova coluna NIP para 8 dígitos
-                if 'NIP' in df_bd.columns:
-                    df_bd['NIP'] = df_bd['NIP'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.zfill(8)
-
-                # 🛡️ BLINDAGEM 2: Criar a coluna 'NOME' Mestre
-                col_nome_bd = next((col for col in df_bd.columns if col.upper().startswith('NOME')), None)
-                if col_nome_bd:
-                    df_bd['NOME'] = df_bd[col_nome_bd]
-                    
+    with st.spinner("Lendo Banco de Dados... (Isso ocorrerá apenas uma vez)"):
+        # Lemos os bytes do arquivo para o cache poder memorizar
+        bytes_bd = bd_file.getvalue()
+        df_bd = carregar_banco_dados(bytes_bd, bd_file.name)
+        
+        if df_bd is not None:
             st.success("✅ Banco de Dados carregado na memória com sucesso!")
-
+            
             # 🔍 PAINEL DE AUDITORIA DO BANCO DE DADOS (BD)
             with st.expander("🔎 O que o sistema leu no Banco de Dados (BD)?"):
                 st.write(f"**Arquivo processado:** `{bd_file.name}`")
@@ -180,12 +189,9 @@ if bd_file:
                 if 'NIP' in df_bd.columns:
                     st.info("✅ Coluna NIP identificada e padronizada com 8 dígitos.")
                 else:
-                    st.warning("⚠️ Atenção: A coluna NIP não foi encontrada automaticamente com esse nome.")
+                    st.warning("⚠️ Atenção: A coluna NIP não foi encontrada automaticamente.")
                 st.markdown("**Amostra dos dados (Primeiras 50 linhas):**")
                 st.dataframe(df_bd.head(50))
-
-        except Exception as e:
-            st.error(f"Erro ao processar o BD: {e}")
 
 # =================================================================
 # ⚙️ ÁREA TÉCNICA: PROCESSADOR OCR E CRUZAMENTO DE DADOS
