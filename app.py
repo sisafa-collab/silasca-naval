@@ -665,9 +665,7 @@ with tab_manual:
             opcoes_bd = (df_bd['NIP'].astype(str) + " - " + df_bd['NOME'].astype(str)).tolist()
         else:
             opcoes_bd = df_bd['NIP'].astype(str).tolist()
-            
-        usuario_selecionado = st.selectbox("1) Selecione o Usuário (Digite NIP ou Nome):", [""] + opcoes_bd)
-       
+                   
         # ⚡ BUSCA RÁPIDA POR NIP (Evita travar com 130 mil linhas)
         nip_digitado = st.text_input("1) Digite o NIP do Usuário (8 dígitos):", placeholder="Ex: 01234567").strip()
 
