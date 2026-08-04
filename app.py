@@ -138,17 +138,37 @@ if bd_file:
             if df_bd is not None and not df_bd.empty:
                 df_bd.columns = df_bd.columns.astype(str).str.strip()
                 
-                # 🛡️ BLINDAGEM 1: Caça ao NIP (ignora vírgulas e sufixos do DBF)
-                col_nip = next((col for col in df_bd.columns if col.upper().split(',')[0] in ['NIP', 'C_NIP']), None)
-                if col_nip:
-                    if col_nip != 'NIP':
-                        df_bd.rename(columns={col_nip: 'NIP'}, inplace=True)
-                    df_bd['NIP'] = df_bd['NIP'].astype(str).str.strip().str.zfill(8)
-                    
-                # 🛡️ BLINDAGEM 2: Caça ao NOME (ignora vírgulas e sufixos do DBF)
-                col_nome_bd = next((col for col in df_bd.columns if col.upper().split(',')[0] == 'NOME'), None)
-                if col_nome_bd and col_nome_bd != 'NOME':
-                    df_bd.rename(columns={col_nome_bd: 'NOME'}, inplace=True)
+                # 🛡️ BLINDAGEM 1: Criar a coluna 'NIP' Mestre (Sem apagar as originais)
+                # O banco da MB separa Titular (NIP_TIT) e Dependente (NIP_VINC).
+                col_nip_tit = next((col for col in df_bd.columns if col.upper().startswith('NIP_TIT')), None)
+                col_nip_vinc = next((col for col in df_bd.columns if col.upper().startswith('NIP_VINC')), None)
+                
+                if col_nip_tit and col_nip_vinc:
+                    # Função tática: descobre quem é o dono real daquela linha no BD
+                    def extrair_nip_real(row):
+                        vinc = str(row.get(col_nip_vinc, "")).strip()
+                        if vinc and vinc.lower() not in ['nan', 'none', 'null', '0', '']:
+                            return vinc
+                        return str(row.get(col_nip_tit, "")).strip()
+                    df_bd['NIP'] = df_bd.apply(extrair_nip_real, axis=1)
+                elif col_nip_tit:
+                    df_bd['NIP'] = df_bd[col_nip_tit]
+                elif col_nip_vinc:
+                    df_bd['NIP'] = df_bd[col_nip_vinc]
+                else:
+                    # Tenta achar um NIP genérico caso seja outra planilha
+                    col_gen = next((col for col in df_bd.columns if col.upper().split(',')[0] in ['NIP', 'C_NIP']), None)
+                    if col_gen:
+                        df_bd['NIP'] = df_bd[col_gen]
+                        
+                # Formata a nova coluna NIP para 8 dígitos
+                if 'NIP' in df_bd.columns:
+                    df_bd['NIP'] = df_bd['NIP'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.zfill(8)
+
+                # 🛡️ BLINDAGEM 2: Criar a coluna 'NOME' Mestre
+                col_nome_bd = next((col for col in df_bd.columns if col.upper().startswith('NOME')), None)
+                if col_nome_bd:
+                    df_bd['NOME'] = df_bd[col_nome_bd]
                     
             st.success("✅ Banco de Dados carregado na memória com sucesso!")
 
