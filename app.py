@@ -193,6 +193,16 @@ if bd_file:
                 st.markdown("**Amostra dos dados (Primeiras 50 linhas):**")
                 st.dataframe(df_bd.head(50))
 
+
+
+@st.cache_data
+def obter_opcoes_bd(df):
+    if 'NOME' in df.columns:
+        return (df['NIP'].astype(str) + " - " + df['NOME'].astype(str)).tolist()
+    return df['NIP'].astype(str).tolist()
+
+opcoes_bd = obter_opcoes_bd(df_bd)
+
 # =================================================================
 # ⚙️ ÁREA TÉCNICA: PROCESSADOR OCR E CRUZAMENTO DE DADOS
 # =================================================================
@@ -665,7 +675,20 @@ with tab_manual:
             opcoes_bd = df_bd['NIP'].astype(str).tolist()
             
         usuario_selecionado = st.selectbox("1) Selecione o Usuário (Digite NIP ou Nome):", [""] + opcoes_bd)
-        
+       
+        # ⚡ BUSCA RÁPIDA POR NIP (Evita travar com 130 mil linhas)
+        nip_digitado = st.text_input("1) Digite o NIP do Usuário (8 dígitos):", placeholder="Ex: 01234567").strip()
+
+        usuario_selecionado = ""
+        if nip_digitado:
+            match_usuario = [op for op in opcoes_bd if op.startswith(nip_digitado)]
+            if match_usuario:
+                usuario_selecionado = match_usuario[0]
+            else:
+                st.warning("⚠️ NIP não encontrado no Banco de Dados.")
+
+
+
         # Variáveis globais para o formulário
         nip_selecionado = ""
         nome_paciente = ""
