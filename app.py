@@ -138,13 +138,20 @@ if bd_file:
             if df_bd is not None and not df_bd.empty:
                 df_bd.columns = df_bd.columns.astype(str).str.strip()
                 
-                col_nip = next((col for col in df_bd.columns if col.lower() in ['nip', 'c_nip']), None)
+                # 🛡️ BLINDAGEM 1: Caça ao NIP (ignora vírgulas e sufixos do DBF)
+                col_nip = next((col for col in df_bd.columns if col.upper().split(',')[0] in ['NIP', 'C_NIP']), None)
                 if col_nip:
                     if col_nip != 'NIP':
                         df_bd.rename(columns={col_nip: 'NIP'}, inplace=True)
                     df_bd['NIP'] = df_bd['NIP'].astype(str).str.strip().str.zfill(8)
                     
+                # 🛡️ BLINDAGEM 2: Caça ao NOME (ignora vírgulas e sufixos do DBF)
+                col_nome_bd = next((col for col in df_bd.columns if col.upper().split(',')[0] == 'NOME'), None)
+                if col_nome_bd and col_nome_bd != 'NOME':
+                    df_bd.rename(columns={col_nome_bd: 'NOME'}, inplace=True)
+                    
             st.success("✅ Banco de Dados carregado na memória com sucesso!")
+
             # 🔍 PAINEL DE AUDITORIA DO BANCO DE DADOS (BD)
             with st.expander("🔎 O que o sistema leu no Banco de Dados (BD)?"):
                 st.write(f"**Arquivo processado:** `{bd_file.name}`")
@@ -617,17 +624,17 @@ with tab_ocr:
     elif 'pdfs_carregados' in locals() and pdfs_carregados and (df_bd is None or df_cissfa is None):
         st.warning("⚠️ Carregue o Banco de Dados e garanta que a CISSFA foi carregada para iniciar o cruzamento OCR.")
 
-
 with tab_manual:
     st.markdown("### ✍️ Lançamento Manual de Faturas")
     
     if df_bd is None or df_cissfa is None:
         st.warning("⚠️ Carregue o Banco de Dados e garanta que a CISSFA foi carregada para habilitar o lançamento manual.")
+    elif 'NIP' not in df_bd.columns:
+        st.error("⚠️ O sistema não conseguiu localizar a coluna 'NIP' no Banco de Dados. O arquivo pode estar corrompido ou sem cabeçalho.")
     else:
         # 1. Preparar lista de usuários para busca inteligente
-        col_nome = next((c for c in df_bd.columns if 'NOME' in c.upper()), None)
-        if col_nome:
-            opcoes_bd = (df_bd['NIP'].astype(str) + " - " + df_bd[col_nome].astype(str)).tolist()
+        if 'NOME' in df_bd.columns:
+            opcoes_bd = (df_bd['NIP'].astype(str) + " - " + df_bd['NOME'].astype(str)).tolist()
         else:
             opcoes_bd = df_bd['NIP'].astype(str).tolist()
             
@@ -644,9 +651,16 @@ with tab_manual:
         if usuario_selecionado:
             nip_selecionado = usuario_selecionado.split(" - ")[0]
             registro = df_bd[df_bd['NIP'] == nip_selecionado].iloc[0]
-            nome_paciente = str(registro[col_nome]) if col_nome else "Desconhecido"
+            nome_paciente = str(registro['NOME']) if 'NOME' in df_bd.columns else "Desconhecido"
             
-            tipo_dep_raw = str(registro.get('TIPO_DEP,C,1', '')).strip().upper()
+            # 🛡️ FUNÇÃO TÁTICA: Puxa o campo ignorando se tem sufixos de DBF (ex: TIPO_DEP,C,1)
+            def pegar_dado(nome_base, default=""):
+                for col in df_bd.columns:
+                    if str(col).upper().split(',')[0] == nome_base:
+                        return registro[col]
+                return default
+            
+            tipo_dep_raw = str(pegar_dado('TIPO_DEP')).strip().upper()
             
             # 🎯 Identificação Cirúrgica do Perfil e do Titular
             if tipo_dep_raw in ['NAN', 'NONE', 'NULL', ''] or len(tipo_dep_raw) == 0:
@@ -657,19 +671,19 @@ with tab_manual:
             elif tipo_dep_raw == 'D':
                 perfil_usu = "Dependente Direto"
                 perc_cobrar = 20
-                nip_titular = str(registro.get('NIP_TIT,C,8', '')).strip()
+                nip_titular = str(pegar_dado('NIP_TIT')).strip()
                 if not nip_titular or nip_titular.lower() == 'nan': nip_titular = nip_selecionado
                 titular_reg = df_bd[df_bd['NIP'] == nip_titular]
-                titular_nome = str(titular_reg.iloc[0][col_nome]) if not titular_reg.empty and col_nome else nip_titular
+                titular_nome = str(titular_reg.iloc[0]['NOME']) if not titular_reg.empty and 'NOME' in df_bd.columns else nip_titular
             else:
                 perfil_usu = "Dependente Indireto"
                 perc_cobrar = 100
-                nip_titular = str(registro.get('NIP_TIT,C,8', '')).strip()
+                nip_titular = str(pegar_dado('NIP_TIT')).strip()
                 if not nip_titular or nip_titular.lower() == 'nan': nip_titular = nip_selecionado
                 titular_reg = df_bd[df_bd['NIP'] == nip_titular]
-                titular_nome = str(titular_reg.iloc[0][col_nome]) if not titular_reg.empty and col_nome else nip_titular
+                titular_nome = str(titular_reg.iloc[0]['NOME']) if not titular_reg.empty and 'NOME' in df_bd.columns else nip_titular
                 
-            regra_imh = str(registro.get('IMH,C,1', 'S')).strip().upper()
+            regra_imh = str(pegar_dado('IMH', 'S')).strip().upper()
             if regra_imh == 'N':
                 isento = True
                 perc_cobrar = 0
