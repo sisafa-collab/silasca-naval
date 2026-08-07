@@ -660,6 +660,10 @@ with tab_manual:
     elif 'NIP' not in df_bd.columns:
         st.error("⚠️ O sistema não conseguiu localizar a coluna 'NIP' no Banco de Dados. O arquivo pode estar corrompido ou sem cabeçalho.")
     else:
+        # 0. Garante a inicialização da lista de faturas acumuladas na sessão
+        if 'lista_manual' not in st.session_state:
+            st.session_state.lista_manual = []
+        
         # 1. Preparar lista de usuários para busca inteligente
         if 'NOME' in df_bd.columns:
             opcoes_bd = (df_bd['NIP'].astype(str) + " - " + df_bd['NOME'].astype(str)).tolist()
@@ -676,8 +680,6 @@ with tab_manual:
                 usuario_selecionado = match_usuario[0]
             else:
                 st.warning("⚠️ NIP não encontrado no Banco de Dados.")
-
-
 
         # Variáveis globais para o formulário
         nip_selecionado = ""
@@ -795,74 +797,113 @@ with tab_manual:
                         "Valor (R$)": valor
                     })
                     
-        # Botão tático de Registro
-        if st.button("➕ Adicionar Exames à Fatura", type="primary"):
-            if not usuario_selecionado or not data_exame or not empresa_nome:
-                st.error("⚠️ Preencha o Usuário, Data e Empresa antes de adicionar!")
-            elif not exames_temporarios:
-                st.error("⚠️ Selecione ao menos um exame válido!")
-            else:
-                if 'lista_manual' not in st.session_state:
-                    st.session_state.lista_manual = []
-                st.session_state.lista_manual.extend(exames_temporarios)
-                st.success(f"✅ {len(exames_temporarios)} exame(s) adicionado(s) com sucesso à fatura atual!")
-                
+        # Botões de Ação do Formulário
+        col_btn1, col_btn2 = st.columns([2, 1])
+        with col_btn1:
+            if st.button("➕ Adicionar Exames à Fatura", type="primary", use_container_width=True):
+                if not usuario_selecionado or not data_exame or not empresa_nome:
+                    st.error("⚠️ Preencha o Usuário, Data e Empresa antes de adicionar!")
+                elif not exames_temporarios:
+                    st.error("⚠️ Selecione ao menos um exame válido!")
+                else:
+                    st.session_state.lista_manual.extend(exames_temporarios)
+                    st.success(f"✅ {len(exames_temporarios)} exame(s) do usuário **{nome_paciente}** adicionado(s) com sucesso!")
+                    # Reseta o campo NIP para permitir novo usuário imediatamente
+                    st.session_state["input_nip_manual"] = ""
+                    st.rerun()
+
+        with col_btn2:
+            if st.button("🔄 Novo Cadastro / Limpar", use_container_width=True):
+                st.session_state["input_nip_manual"] = ""
+                st.rerun()
+
         # =================================================================
         # 📋 PAINEL CONSOLIDADO MANUAL E EXPORTAÇÃO AGRUPADA
         # =================================================================
-        if 'lista_manual' in st.session_state and st.session_state.lista_manual:
+        if st.session_state.lista_manual:
             st.divider()
-            st.markdown("### 📋 Faturas Manuais Registradas (Pré-agrupamento)")
-            df_manual = pd.DataFrame(st.session_state.lista_manual)
-            st.dataframe(df_manual, use_container_width=True)
+            st.markdown(f"### 📋 Faturas Manuais Registradas ({len(st.session_state.lista_manual)} itens acumulados)")
             
-            if st.button("🗑️ Limpar Lista Manual"):
+            df_manual = pd.DataFrame(st.session_state.lista_manual)
+            
+            st.markdown("💡 *Você pode editar campos diretamente na tabela abaixo ou **excluir linhas individuais** selecionando a linha e apertando 'Delete'.*")
+            
+            # Editor interativo com exclusão e edição dinâmica de linhas
+            df_manual_editavel = st.data_editor(
+                df_manual,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="editor_faturas_manuais"
+            )
+            
+            # Sincroniza as alterações/exclusões com a sessão
+            st.session_state.lista_manual = df_manual_editavel.to_dict('records')
+            
+            if st.button("🗑️ Limpar Toda a Lista Manual"):
                 st.session_state.lista_manual = []
                 st.rerun()
                 
-            st.markdown("### 📊 Exportação Agrupada (Final)")
-            
-            # AGRUPAMENTO TÁTICO SOLICITADO
-            # Linhas agrupadas por NIP do titular (primeira coluna) e dependente (última coluna)
-            # Soma dos valores numéricos 
-            # Compêndio na descrição separados por vírgula
-            df_agrupado = df_manual.groupby(
-                ['NIP Titular', 'NIP Dependente', 'Data', 'Empresa'], 
-                as_index=False
-            ).agg({
-                'Valor (R$)': 'sum',
-                'Descrição Exame': lambda x: ", ".join(x.astype(str))
-            })
-            
-            df_export_manual = pd.DataFrame()
-            
-            df_export_manual["NIP (NNNNNNNN)"] = df_agrupado["NIP Titular"]
-            df_export_manual["DATA (DD/MM/AA)"] = df_agrupado["Data"]
-            df_export_manual["VALOR (R$)"] = df_agrupado["Valor (R$)"]
-            df_export_manual["OSE? (s/n)"] = "s"
-            
-            descricoes_agrupadas = df_agrupado["Descrição Exame"].replace(r'[\n\r;]', ' ', regex=True)
-            
-            # Construção cirúrgica do texto conforme a ordem exigida
-            df_export_manual["DESCRIÇÃO"] = (
-                "Realização de exame laboratorial - " + 
-                descricoes_agrupadas + 
-                " - utilizado por usuário (a) do SSM, na empresa " + 
-                df_agrupado["Empresa"] + 
-                " no dia " + 
-                df_agrupado["Data"] + "."
-            )
-            
-            df_export_manual["NIP DEPENDENTE (NNNNNNNN)"] = df_agrupado["NIP Dependente"]
-            
-            st.dataframe(df_export_manual, use_container_width=True, hide_index=True)
-            
-            csv_manual = df_export_manual.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
-            
-            st.download_button(
-                label="📥 Baixar Planilha Consolidada (.CSV) - Lançamento Manual",
-                data=csv_manual,
-                file_name="faturamento_manual_auditado.csv",
-                mime="text/csv",
-                key="btn_download_manual"
-            )
+            if st.session_state.lista_manual:
+                st.markdown("### 📊 Exportação Agrupada (Final)")
+                
+                df_manual_atual = pd.DataFrame(st.session_state.lista_manual)
+                
+                # AGRUPAMENTO MULTI-USUÁRIO SOLICITADO
+                # Agrupa por Titular, Dependente, Data e Empresa
+                df_agrupado = df_manual_atual.groupby(
+                    ['NIP Titular', 'NIP Dependente', 'Data', 'Empresa'], 
+                    as_index=False
+                ).agg({
+                    'Valor (R$)': 'sum',
+                    'Descrição Exame': lambda x: ", ".join(x.astype(str))
+                })
+                
+                df_export_manual = pd.DataFrame()
+                
+                df_export_manual["NIP (NNNNNNNN)"] = df_agrupado["NIP Titular"]
+                df_export_manual["DATA (DD/MM/AA)"] = df_agrupado["Data"]
+                df_export_manual["VALOR (R$)"] = df_agrupado["Valor (R$)"]
+                df_export_manual["OSE? (s/n)"] = "s"
+                
+                descricoes_agrupadas = df_agrupado["Descrição Exame"].replace(r'[\n\r;]', ' ', regex=True)
+                
+                # Construção do texto consolidado por usuário/atendimento
+                df_export_manual["DESCRIÇÃO"] = (
+                    "Realização de exame laboratorial - " + 
+                    descricoes_agrupadas + 
+                    " - utilizado por usuário (a) do SSM, na empresa " + 
+                    df_agrupado["Empresa"] + 
+                    " no dia " + 
+                    df_agrupado["Data"] + "."
+                )
+                
+                df_export_manual["NIP DEPENDENTE (NNNNNNNN)"] = df_agrupado["NIP Dependente"]
+                
+                st.dataframe(df_export_manual, use_container_width=True, hide_index=True)
+                
+                # =====================================================================
+                # 🛡️ BLINDAGEM CONTRA O EXCEL (PRESERVAR ZEROS À ESQUERDA)
+                # =====================================================================
+                df_para_csv = df_export_manual.copy()
+                
+                # Função tática para forçar o Excel a entender a célula como texto
+                def blindar_nip(nip):
+                    nip_str = str(nip).strip()
+                    if nip_str and nip_str.lower() not in ['nan', 'none', '']:
+                        return f'="{nip_str}"'
+                    return ""
+                
+                # Aplica a blindagem nos NIPs Titulares e Dependentes
+                df_para_csv["NIP (NNNNNNNN)"] = df_para_csv["NIP (NNNNNNNN)"].apply(blindar_nip)
+                df_para_csv["NIP DEPENDENTE (NNNNNNNN)"] = df_para_csv["NIP DEPENDENTE (NNNNNNNN)"].apply(blindar_nip)
+                
+                # Gera o CSV usando o DataFrame blindado
+                csv_manual = df_para_csv.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
+                
+                st.download_button(
+                    label="📥 Baixar Planilha Consolidada (.CSV) - Lançamento Manual Multi-Usuário",
+                    data=csv_manual,
+                    file_name="faturamento_manual_auditado.csv",
+                    mime="text/csv",
+                    key="btn_download_manual"
+                )
