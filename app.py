@@ -869,9 +869,7 @@ with tab_manual:
                 
                 # Construção do texto consolidado por usuário/atendimento
                 df_export_manual["DESCRIÇÃO"] = (
-                    "Realização de exame laboratorial - " + 
-                    descricoes_agrupadas + 
-                    " - utilizado por usuário (a) do SSM, na empresa " + 
+                    "Atendimento (exame e/ou procedimento) na empresa" + 
                     df_agrupado["Empresa"] + 
                     " no dia " + 
                     df_agrupado["Data"] + "."
