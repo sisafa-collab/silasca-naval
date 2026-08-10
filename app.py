@@ -815,8 +815,9 @@ with tab_manual:
         col_btn1, col_btn2 = st.columns([2, 1])
         with col_btn1:
             if st.button("➕ Adicionar Exames à Fatura", type="primary", use_container_width=True):
-                if not usuario_selecionado or not data_exame or not empresa_nome:
-                    st.error("⚠️ Preencha o Usuário, Data e Empresa antes de adicionar!")
+                # 👇 CORREÇÃO APLICADA AQUI: Substituímos 'data_exame' por 'data_inicial'
+                if not usuario_selecionado or not data_inicial or not empresa_nome:
+                    st.error("⚠️ Preencha o Usuário, Data Inicial e Empresa antes de adicionar!")
                 elif not exames_temporarios:
                     st.error("⚠️ Selecione ao menos um exame válido!")
                 else:
