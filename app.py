@@ -870,7 +870,10 @@ with tab_manual:
                     as_index=False
                 ).agg({
                     'Valor (R$)': 'sum',
-                    'Descrição Exame': lambda x: ", ".join(x.astype(str))
+                    'Descrição Exame': lambda x: ", ".join(x.astype(str)),
+                    'Tipo Atendimento': 'first', 
+                    'Data Inicial': 'first',     
+                    'Data Final': 'first'        
                 })
                 
                 df_export_manual = pd.DataFrame()
