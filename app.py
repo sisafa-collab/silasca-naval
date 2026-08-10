@@ -737,12 +737,23 @@ with tab_manual:
             if isento:
                 st.warning("⚠️ **ATENÇÃO:** Usuário ISENTO (NÃO INDENIZA). Os valores cobrados serão R$ 0,00.")
                 
-        # 2 e 3. Data e Empresa
-        col_dados1, col_dados2 = st.columns(2)
+        # 2, 3 e 4. Tipo, Data e Empresa
+        col_tipo, col_dados1, col_dados2, col_empresa = st.columns(4)
+        
+        with col_tipo:
+            tipo_atendimento = st.selectbox(
+                "2) Tipo de Atendimento", 
+                options=["Consulta", "Exame", "Procedimento", "Internação"]
+            )
+            
         with col_dados1:
-            data_exame = st.text_input("2) Data do Exame (DD/MM/AAAA)", placeholder="Ex: 15/08/2026")
+            data_inicial = st.text_input("3) Data Inicial (DD/MM/AAAA)", placeholder="Ex: 15/08/2026")
+            
         with col_dados2:
-            empresa_nome = st.text_input("3) Nome da Empresa", placeholder="Ex: LASALUS")
+            data_final = st.text_input("4) Data Final (Opcional)", placeholder="Ex: 20/08/2026")
+            
+        with col_empresa:
+            empresa_nome = st.text_input("5) Nome da Empresa", placeholder="Ex: LASALUS")
             
         # 4. Quantidade de Exames
         st.markdown("#### 🩺 Seleção de Exames")
@@ -868,12 +879,24 @@ with tab_manual:
                 descricoes_agrupadas = df_agrupado["Descrição Exame"].replace(r'[\n\r;]', ' ', regex=True)
                 
                 # Construção do texto consolidado por usuário/atendimento
-                df_export_manual["DESCRIÇÃO"] = (
-                    "Atendimento (exame e/ou procedimento) na empresa" + 
-                    df_agrupado["Empresa"] + 
-                    " no dia " + 
-                    df_agrupado["Data"] + "."
-                )
+                def gerar_texto_descricao(linha):
+                    # Pega o tipo e já deixa em minúsculo (ex: "consulta", "exame")
+                    tipo = str(linha.get("Tipo Atendimento", "procedimento")).lower() 
+                    empresa = str(linha.get("Empresa", ""))
+                    d_ini = str(linha.get("Data Inicial", ""))
+                    d_fim = str(linha.get("Data Final", "")).strip()
+                    
+                    # Verifica se o campo de data final está vazio
+                    if not d_fim or d_fim.lower() == "nan" or d_fim.lower() == "none":
+                        # Retorna o texto para data única
+                        return f"Atendimento de {tipo} na OSE credenciada {empresa} no dia {d_ini}."
+                    else:
+                        # Retorna o texto para período (inicial a final)
+                        return f"Atendimento de {tipo} na OSE credenciada {empresa} do dia {d_ini} a {d_fim}."
+
+                # Aplica a função de forma blindada em todas as linhas
+                df_export_manual["DESCRIÇÃO"] = df_agrupado.apply(gerar_texto_descricao, axis=1)
+                
                 
                 df_export_manual["NIP DEPENDENTE (NNNNNNNN)"] = df_agrupado["NIP Dependente"]
                 
