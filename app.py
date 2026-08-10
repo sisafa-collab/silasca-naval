@@ -796,11 +796,14 @@ with tab_manual:
                 st.caption(f"✅ **Código:** `{info_exame['Código']}` | **Descrição:** {desc_exame} | **Valor ({perc_cobrar}%):** R$ {valor:,.2f}")
                 
                 # Guarda na memória temporária do form
-                if usuario_selecionado and data_exame and empresa_nome:
+                if usuario_selecionado and data_inicial and empresa_nome:
                     exames_temporarios.append({
                         "NIP Titular": nip_titular,
                         "NIP Dependente": nip_selecionado if "Dependente" in perfil_usu else "",
-                        "Data": data_exame,
+                        "Data": data_inicial, # Mantido por segurança para não quebrar a coluna principal
+                        "Data Inicial": data_inicial,
+                        "Data Final": data_final,
+                        "Tipo Atendimento": tipo_atendimento,
                         "Empresa": empresa_nome,
                         "Nome Paciente": nome_paciente,
                         "Código (CISSFA)": cod_exame,
@@ -897,7 +900,7 @@ with tab_manual:
                 # Aplica a função de forma blindada em todas as linhas
                 df_export_manual["DESCRIÇÃO"] = df_agrupado.apply(gerar_texto_descricao, axis=1)
                 
-                
+
                 df_export_manual["NIP DEPENDENTE (NNNNNNNN)"] = df_agrupado["NIP Dependente"]
                 
                 st.dataframe(df_export_manual, use_container_width=True, hide_index=True)
