@@ -51,8 +51,8 @@ st.markdown("""
 @st.cache_data
 def carregar_tabela_referencia():
     # Tenta carregar XLSX ou CSV de forma inteligente direto do GitHub
-    arquivo_xlsx = "CISSFA-2022-2023-2024.xlsx"
-    arquivo_csv = "CISSFA-2022-2023-2024.csv"
+    arquivo_xlsx = "CISSFA.xlsx"
+    arquivo_csv = "CISSFA.csv"
     
     df_ref = None
     
