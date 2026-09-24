@@ -244,11 +244,114 @@ with tab_ocr:
                             except: return 0.0
                             
                         # ==========================================================
-                        # 🚦 INTELIGÊNCIA DE DECISÃO: MODO RELATÓRIO vs MODO GUIA
+                        # 🚦 INTELIGÊNCIA DE DECISÃO: SABIN vs LASALUS vs GUIA MB
                         # ==========================================================
+                        is_sabin = bool(re.search(r'(?i)ORDEM\s+DE\s+SERVIÇO\s+DE\s+ESCRITÓRIO', texto_completo))
                         is_fatura_tabela = bool(re.search(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo))
-                        
-                        if is_fatura_tabela:
+
+                        if is_sabin:
+                            st.info("🟢 Fatura SABIN detetada! A aplicar regra de percentagem sobre o Valor Total da Fatura...")
+
+                            # 1. Extração do Nome (Coração da busca, já que não temos NIP)
+                            match_nome = re.search(r'(?i)Nome:\s*([^\n]+)', texto_completo)
+                            nome_usu = match_nome.group(1).replace('Nome Social:', '').strip() if match_nome else "Não identificado"
+
+                            # 2. Extração da Data
+                            match_data = re.search(r'(?i)Data O\.S\.:[\s\|]*(\d{2}/\d{2}/\d{4})', texto_completo)
+                            data_fatura = match_data.group(1) if match_data else "Data_Não_Encontrada"
+
+                            # 3. Extração do Valor Total (O Sabin já soma tudo no final)
+                            match_total = re.search(r'(?i)Total em Real:[\s\|]*([\d\.,]+)', texto_completo)
+                            valor_total_fatura = 0.0
+                            
+                            if match_total:
+                                val_str = match_total.group(1).strip()
+                                
+                                # Limpeza Tática contra erros de OCR em milhares (ex: "1,455,16")
+                                if val_str.count(',') > 1:
+                                    partes = val_str.rsplit(',', 1) # Separa só pela última vírgula
+                                    val_str = partes[0].replace(',', '') + '.' + partes[1]
+                                elif val_str.count(',') == 1 and val_str.count('.') == 1:
+                                    val_str = val_str.replace('.', '').replace(',', '.')
+                                elif val_str.count(',') == 1:
+                                    val_str = val_str.replace(',', '.')
+                                
+                                try:
+                                    valor_total_fatura = float(val_str)
+                                except:
+                                    valor_total_fatura = 0.0
+
+                            # 4. Cruzamento com Banco de Dados pelo NOME
+                            nip_usu = "N/A"
+                            perfil_usu = "Desconhecido"
+                            perc_cobrar = 100
+                            valor_final = 0.0
+                            status_cobranca = "Militar não localizado no BD (Busca por Nome)"
+
+                            if nome_usu != "Não identificado":
+                                # Função helper para achar colunas dinâmicas (ex: NOME,C,80)
+                                def obter_coluna(df, nome_base):
+                                    for col in df.columns:
+                                        if str(col).upper().split(',')[0] == nome_base: return col
+                                    return None
+
+                                col_nome = obter_coluna(df_bd, 'NOME')
+
+                                if col_nome:
+                                    # Busca exata blindada (tudo para maiúsculas e sem espaços extra)
+                                    info_militar = df_bd[df_bd[col_nome].astype(str).str.strip().str.upper() == nome_usu.upper()]
+
+                                    if not info_militar.empty:
+                                        registro = info_militar.iloc[0]
+
+                                        col_nip = obter_coluna(df_bd, 'NIP')
+                                        col_nip_tit = obter_coluna(df_bd, 'NIP_TIT')
+                                        col_imh = obter_coluna(df_bd, 'IMH')
+                                        col_tipo_dep = obter_coluna(df_bd, 'TIPO_DEP')
+
+                                        # Resgata o NIP do utilizador
+                                        if col_nip and str(registro[col_nip]).strip() not in ['nan', 'None', '']:
+                                            nip_usu = str(registro[col_nip]).strip()
+                                        elif col_nip_tit:
+                                            nip_usu = str(registro[col_nip_tit]).strip()
+
+                                        regra_imh = str(registro[col_imh]).strip().upper() if col_imh else 'S'
+                                        tipo_dep_raw = str(registro[col_tipo_dep]).strip().upper() if col_tipo_dep else ''
+
+                                        # Regras de Negócio (20% para Titular e Dep. Direto | 100% para Indireto)
+                                        if tipo_dep_raw in ['NAN', 'NONE', 'NULL', ''] or len(tipo_dep_raw) == 0:
+                                            perfil_usu, perc_cobrar = "Titular", 20
+                                        elif tipo_dep_raw == 'D':
+                                            perfil_usu, perc_cobrar = "Dep. Direto", 20
+                                        else:
+                                            perfil_usu, perc_cobrar = "Dep. Indireto", 100
+
+                                        # Aplica a Isenção (IMH = N) ou faz o cálculo pelo %
+                                        if regra_imh == 'N':
+                                            valor_final, status_cobranca = 0.0, f"NÃO INDENIZA (Isento) - {perfil_usu}"
+                                        else:
+                                            valor_final = valor_total_fatura * (perc_cobrar / 100.0)
+                                            status_cobranca = f"Indeniza {perc_cobrar}% s/ Total ({perfil_usu})"
+
+                            st.caption(f"🔹 **Lido (SABIN):** `{nome_usu}` | Total Fatura: R$ {valor_total_fatura:,.2f} ➡️ **Oficial BD:** R$ {valor_final:,.2f} ({status_cobranca})")
+
+                            if valor_total_fatura > 0:
+                                dados_consolidados_lasalus.append({
+                                    "Data": data_fatura,
+                                    "Arquivo": pdf_carregado.name,
+                                    "NIP": nip_usu,
+                                    "Nome Paciente": nome_usu,
+                                    "Código (CISSFA)": "SABIN-TOTAL",
+                                    "Descrição Exame": "Exames Laboratoriais (Fatura SABIN)",
+                                    "Status": status_cobranca,
+                                    "Valor (R$)": valor_final,
+                                    "Perfil": perfil_usu,
+                                    "Empresa": "SABIN"
+                                })
+                            else:
+                                st.warning(f"⚠️ A fatura de {nome_usu} foi lida, mas o 'Total em Real' não foi detetado corretamente ou é igual a zero.")
+                                  
+                        elif is_fatura_tabela:
                             st.info("📄 Formato de Fatura/Relatório em Tabela detetado (Padrão LASALUS)! A ler registos...")
                             
                             blocos_lasalus = re.split(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo)
