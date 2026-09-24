@@ -768,9 +768,8 @@ with tab_ocr:
             else:
                 empresas = "LASALUS"
                 
-            # 🛡️ BLINDAGEM 1: Correção do "Explosion" de Colunas
-            # Adicionado o .str. antes do replace para agir dentro do texto, removendo "Enter" e ";"
-            descricoes_limpas = df_pre_export["Descrição Exame"].astype(str).str.replace(r'[\n\r;\t]+', ' ', regex=True)
+            # 🛡️ LIMPEZA CIRÚRGICA: Reduz espaços duplos/tabs invisíveis que causam buracos no texto
+            descricoes_limpas = df_pre_export["Descrição Exame"].astype(str).str.replace(r'[\n\r\t]+', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
             
             df_export["DESCRIÇÃO"] = (
                 "Realização de exame laboratorial - " + 
@@ -784,30 +783,35 @@ with tab_ocr:
             # (F) NIP DEPENDENTE (SÓ PREENCHE SE FOR DEPENDENTE)
             df_export["NIP DEPENDENTE (NNNNNNNN)"] = nips_calculados[1]
             
-            # Exibe a planilha lapidada na tela para o usuário ver o resultado do filtro
+            # Exibe a planilha lapidada na tela para o usuário ver o resultado
             st.dataframe(df_export, use_container_width=True, hide_index=True)
             
-            # 🛡️ BLINDAGEM CONTRA O EXCEL (Preservar NIPs e Ajustar Decimais)
-            # Cria uma cópia exclusiva para o CSV para não poluir a tela do Streamlit
+            # =================================================================
+            # 🛡️ BLINDAGEM DE EXPORTAÇÃO (A Vacina contra o "Explosion" do Excel)
+            # =================================================================
             df_csv = df_export.copy()
             
-            # Envelopa o NIP do Titular na fórmula =""
+            # 1. Preservação dos NIPs com a fórmula do Excel
             df_csv["NIP (NNNNNNNN)"] = '="' + df_csv["NIP (NNNNNNNN)"].astype(str) + '"'
-            
-            # Envelopa o NIP do Dependente apenas se a célula não estiver vazia
             df_csv["NIP DEPENDENTE (NNNNNNNN)"] = df_csv["NIP DEPENDENTE (NNNNNNNN)"].apply(
                 lambda x: f'="{x}"' if str(x).strip() else ""
             )
             
-            # 🛡️ BLINDAGEM 2: Travar a vírgula para o Excel Brasileiro
-            # Força o número a ter duas casas decimais e troca o ponto americano pela vírgula brasileira
-            df_csv["VALOR (R$)"] = df_csv["VALOR (R$)"].apply(lambda x: f"{float(x):.2f}".replace('.', ','))
+            # 2. Mantemos o Valor como NÚMERO (FLOAT) para o Python não se perder
+            df_csv["VALOR (R$)"] = pd.to_numeric(df_csv["VALOR (R$)"], errors='coerce').fillna(0.0)
             
-            # Reforço de segurança: garante que a coluna descrição no CSV está perfeitamente limpa
-            df_csv["DESCRIÇÃO"] = df_csv["DESCRIÇÃO"].astype(str).str.replace(r'[\n\r;\t]+', ' ', regex=True)
+            # 3. Limpeza final pesada na descrição para garantir que nenhuma vírgula ou tab passe
+            df_csv["DESCRIÇÃO"] = df_csv["DESCRIÇÃO"].astype(str).str.replace(r'[\n\r\t]+', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
             
-            # Gera o arquivo CSV blindado (usando ponto e vírgula)
-            csv_memoria = df_csv.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
+            # 4. Geração do CSV com Envelopamento Total (quoting=1) e conversor decimal nativo
+            csv_memoria = df_csv.to_csv(
+                index=False, 
+                sep=";", 
+                decimal=",",          # Converte os pontos para vírgulas nativamente e de forma segura
+                float_format="%.2f",  # Força as 2 casas decimais (ex: 291.03 -> 291,03)
+                quoting=1,            # Envelopa CADA célula com aspas (" "). Bloqueia a explosão das colunas!
+                encoding='utf-8-sig'
+            ).encode('utf-8-sig')
             
             st.download_button(
                 label="📥 Baixar Planilha Consolidada (.CSV)",
