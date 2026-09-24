@@ -768,8 +768,9 @@ with tab_ocr:
             else:
                 empresas = "LASALUS"
                 
-            # BLINDAGEM DO CSV: Removemos pontos e vírgulas (;) e quebras de linha (\n) 
-            descricoes_limpas = df_pre_export["Descrição Exame"].astype(str).replace(r'[\n\r;]', ' ', regex=True)
+            # 🛡️ BLINDAGEM 1: Correção do "Explosion" de Colunas
+            # Adicionado o .str. antes do replace para agir dentro do texto, removendo "Enter" e ";"
+            descricoes_limpas = df_pre_export["Descrição Exame"].astype(str).str.replace(r'[\n\r;\t]+', ' ', regex=True)
             
             df_export["DESCRIÇÃO"] = (
                 "Realização de exame laboratorial - " + 
@@ -783,11 +784,30 @@ with tab_ocr:
             # (F) NIP DEPENDENTE (SÓ PREENCHE SE FOR DEPENDENTE)
             df_export["NIP DEPENDENTE (NNNNNNNN)"] = nips_calculados[1]
             
-            # Exibe a planilha lapidada na tela
+            # Exibe a planilha lapidada na tela para o usuário ver o resultado do filtro
             st.dataframe(df_export, use_container_width=True, hide_index=True)
             
-            # Gera o arquivo CSV
-            csv_memoria = df_export.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
+            # 🛡️ BLINDAGEM CONTRA O EXCEL (Preservar NIPs e Ajustar Decimais)
+            # Cria uma cópia exclusiva para o CSV para não poluir a tela do Streamlit
+            df_csv = df_export.copy()
+            
+            # Envelopa o NIP do Titular na fórmula =""
+            df_csv["NIP (NNNNNNNN)"] = '="' + df_csv["NIP (NNNNNNNN)"].astype(str) + '"'
+            
+            # Envelopa o NIP do Dependente apenas se a célula não estiver vazia
+            df_csv["NIP DEPENDENTE (NNNNNNNN)"] = df_csv["NIP DEPENDENTE (NNNNNNNN)"].apply(
+                lambda x: f'="{x}"' if str(x).strip() else ""
+            )
+            
+            # 🛡️ BLINDAGEM 2: Travar a vírgula para o Excel Brasileiro
+            # Força o número a ter duas casas decimais e troca o ponto americano pela vírgula brasileira
+            df_csv["VALOR (R$)"] = df_csv["VALOR (R$)"].apply(lambda x: f"{float(x):.2f}".replace('.', ','))
+            
+            # Reforço de segurança: garante que a coluna descrição no CSV está perfeitamente limpa
+            df_csv["DESCRIÇÃO"] = df_csv["DESCRIÇÃO"].astype(str).str.replace(r'[\n\r;\t]+', ' ', regex=True)
+            
+            # Gera o arquivo CSV blindado (usando ponto e vírgula)
+            csv_memoria = df_csv.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
             
             st.download_button(
                 label="📥 Baixar Planilha Consolidada (.CSV)",
