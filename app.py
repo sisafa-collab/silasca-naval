@@ -309,7 +309,7 @@ with tab_ocr:
                                         col_imh = obter_coluna(df_bd, 'IMH')
                                         col_tipo_dep = obter_coluna(df_bd, 'TIPO_DEP')
 
-                                        # Resgata o NIP do utilizador
+                                        # Resgata o NIP do utilizador (Paciente)
                                         if col_nip and str(registro[col_nip]).strip() not in ['nan', 'None', '']:
                                             nip_usu = str(registro[col_nip]).strip()
                                         elif col_nip_tit:
@@ -332,8 +332,26 @@ with tab_ocr:
                                         else:
                                             valor_final = valor_total_fatura * (perc_cobrar / 100.0)
                                             status_cobranca = f"Indeniza {perc_cobrar}% s/ Total ({perfil_usu})"
+                                            
+                                        # 🛡️ BUSCA TÁTICA DO TITULAR PARA A LEGENDA
+                                        info_titular_legenda = ""
+                                        if "Dep" in perfil_usu:
+                                            nip_titular_busca = nip_usu
+                                            nome_titular_busca = "Desconhecido"
+                                            
+                                            # Puxa o NIP do Titular na linha do dependente
+                                            if col_nip_tit and str(registro[col_nip_tit]).strip() not in ['nan', 'None', '']:
+                                                nip_titular_busca = str(registro[col_nip_tit]).strip()
+                                                
+                                            # Faz uma sub-busca no BD para achar o Nome do Titular
+                                            if col_nome and col_nip:
+                                                busca_tit = df_bd[df_bd[col_nip].astype(str).str.strip() == nip_titular_busca]
+                                                if not busca_tit.empty:
+                                                    nome_titular_busca = str(busca_tit.iloc[0][col_nome])
+                                                    
+                                            info_titular_legenda = f" | 👤 **Titular:** {nome_titular_busca} ({nip_titular_busca})"
 
-                            st.caption(f"🔹 **Lido (SABIN):** `{nome_usu}` | Total Fatura: R$ {valor_total_fatura:,.2f} ➡️ **Oficial BD:** R$ {valor_final:,.2f} ({status_cobranca})")
+                            st.caption(f"🔹 **Lido (SABIN):** `{nome_usu}` | Total Fatura: R$ {valor_total_fatura:,.2f} ➡️ **Oficial BD:** R$ {valor_final:,.2f} ({status_cobranca}){info_titular_legenda}")
 
                             if valor_total_fatura > 0:
                                 dados_consolidados_lasalus.append({
@@ -695,8 +713,41 @@ with tab_ocr:
             # 3. Monta o DataFrame final com as 6 colunas exatas
             df_export = pd.DataFrame()
             
-            # (A) NIP
-            df_export["NIP (NNNNNNNN)"] = df_pre_export["NIP"]
+            # 🛡️ FUNÇÃO TÁTICA: Garantir NIP Titular na Coluna 1 e Dependente na Última
+            def obter_nips_export(row):
+                nip_paciente = str(row.get("NIP", "")).strip()
+                perfil = str(row.get("Perfil", ""))
+                
+                # Por padrão (se for Titular), ele fica na Coluna 1 e o Dependente fica vazio
+                nip_primeira_coluna = nip_paciente
+                nip_ultima_coluna = ""
+                
+                # Se for dependente, inverte a lógica e caça o titular
+                if "Dep" in perfil:
+                    nip_ultima_coluna = nip_paciente # Dependente vai pro final
+                    nip_primeira_coluna = "NÃO_ENCONTRADO"
+                    
+                    try:
+                        # Caça as colunas NIP e NIP_TIT no Banco de Dados
+                        col_nip = next((c for c in df_bd.columns if str(c).upper().split(',')[0] == 'NIP'), None)
+                        col_nip_tit = next((c for c in df_bd.columns if str(c).upper().split(',')[0] == 'NIP_TIT'), None)
+                        
+                        if col_nip and col_nip_tit:
+                            registro_paciente = df_bd[df_bd[col_nip].astype(str).str.strip() == nip_paciente]
+                            if not registro_paciente.empty:
+                                nip_t = str(registro_paciente.iloc[0][col_nip_tit]).strip()
+                                if nip_t and nip_t.lower() not in ['nan', 'none', '']:
+                                    nip_primeira_coluna = nip_t
+                    except:
+                        pass
+                
+                return pd.Series([nip_primeira_coluna, nip_ultima_coluna])
+
+            # Aplica a função para resolver os NIPs de uma vez
+            nips_calculados = df_pre_export.apply(obter_nips_export, axis=1)
+            
+            # (A) NIP TITULAR (SEMPRE TITULAR)
+            df_export["NIP (NNNNNNNN)"] = nips_calculados[0]
             
             # (B) DATA
             if "Data" in df_pre_export.columns:
@@ -717,8 +768,7 @@ with tab_ocr:
             else:
                 empresas = "LASALUS"
                 
-            # 🛡️ BLINDAGEM DO CSV: Removemos pontos e vírgulas (;) e quebras de linha (\n) 
-            # do texto do exame para o Excel não explodir as colunas!
+            # BLINDAGEM DO CSV: Removemos pontos e vírgulas (;) e quebras de linha (\n) 
             descricoes_limpas = df_pre_export["Descrição Exame"].astype(str).replace(r'[\n\r;]', ' ', regex=True)
             
             df_export["DESCRIÇÃO"] = (
@@ -730,20 +780,13 @@ with tab_ocr:
                 datas + "."
             )
             
-            # (F) NIP DEPENDENTE
-            # 🛡️ REGRA TÁTICA: Se a palavra 'Dep' estiver no perfil, preenche. Se for titular, fica vazio.
-            def classificar_nip_dep(row):
-                perfil = str(row.get("Perfil", ""))
-                if "Dep" in perfil:
-                    return row["NIP"]
-                return ""
-                
-            df_export["NIP DEPENDENTE (NNNNNNNN)"] = df_pre_export.apply(classificar_nip_dep, axis=1)
+            # (F) NIP DEPENDENTE (SÓ PREENCHE SE FOR DEPENDENTE)
+            df_export["NIP DEPENDENTE (NNNNNNNN)"] = nips_calculados[1]
             
-            # Exibe a planilha lapidada na tela para o usuário ver o resultado do filtro
+            # Exibe a planilha lapidada na tela
             st.dataframe(df_export, use_container_width=True, hide_index=True)
             
-            # Gera o arquivo CSV (usando ponto e vírgula)
+            # Gera o arquivo CSV
             csv_memoria = df_export.to_csv(index=False, sep=";", encoding='utf-8-sig').encode('utf-8-sig')
             
             st.download_button(
