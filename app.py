@@ -246,23 +246,30 @@ with tab_ocr:
                         # ==========================================================
                         # 🚦 INTELIGÊNCIA DE DECISÃO: SABIN vs LASALUS vs GUIA MB
                         # ==========================================================
-                        is_sabin = bool(re.search(r'(?i)ORDEM\s+DE\s+SERVIÇO\s+DE\s+ESCRITÓRIO', texto_completo))
-                        is_fatura_tabela = bool(re.search(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo))
-
                         if is_sabin:
                             st.info("🟢 Fatura(s) SABIN detetada(s)! A ler e aplicar regras de percentagem...")
 
-                            # 🛡️ O SEGREDO ESTÁ AQUI: Fatiar o texto inteiro a cada nova Ordem de Serviço
+                            # 🛡️ O SEGREDO ESTÁ AQUI: Fatiar o texto inteiro pelo NOME do paciente!
+                            # A tática anterior fatiou pela "ORDEM DE SERVIÇO", mas o OCR às vezes lia o nome ANTES
+                            # e às vezes DEPOIS. Isso empurrava o nome de um paciente para a fatura do outro.
+                            # Fatiando por "Nome:" (ignorando o Nome Social), blindamos o alinhamento!
                             blocos_sabin = re.split(r'(?i)ORDEM\s+DE\s+SERVIÇO\s+DE\s+ESCRITÓRIO', texto_completo)
                             
-                            # Remove o primeiro pedaço se for apenas "lixo" do topo da página
-                            if blocos_sabin and len(blocos_sabin[0].strip()) < 50:
-                                blocos_sabin = blocos_sabin[1:]
+                            # O loop começa no 1 para ignorar o lixo do topo da página e poder olhar para trás (i-1)
+                            for i in range(1, len(blocos_sabin)):
+                                bloco = blocos_sabin[i]
+                                bloco_anterior = blocos_sabin[i-1]
 
-                            for i, bloco in enumerate(blocos_sabin, 1):
-                                # 1. Extração do Nome (Busca restrita ao BLOCO atual)
-                                match_nome = re.search(r'(?i)Nome:\s*([^\n]+)', bloco)
-                                nome_usu = match_nome.group(1).replace('Nome Social:', '').strip() if match_nome else "Não identificado"
+                                # 1. Extração do Nome (Busca Dupla)
+                                # Primeiro tenta achar no bloco atual (caso o OCR tenha lido na ordem normal)
+                                match_nome = re.search(r'(?i)Nome\s*:\s*([^\n]+)', bloco)
+                                
+                                # Se o OCR bagunçou e leu o Nome ANTES do título, caçamos no final do bloco anterior!
+                                if not match_nome:
+                                    match_nome = re.search(r'(?i)Nome\s*:\s*([^\n]+)', bloco_anterior[-350:])
+                                
+                                # Limpeza extra de ruídos que podem estar na mesma linha
+                                nome_usu = match_nome.group(1).replace('Nome Social:', '').replace('CPF:', '').strip() if match_nome else "Não identificado"
                                 
                                 # Se não achou nome e o bloco é muito pequeno, ignora (pode ser o rodapé final do PDF)
                                 if nome_usu == "Não identificado" and len(bloco.strip()) < 100:
@@ -272,8 +279,8 @@ with tab_ocr:
                                 match_data = re.search(r'(?i)Data O\.S\.:[\s\|]*(\d{2}/\d{2}/\d{4})', bloco)
                                 data_fatura = match_data.group(1) if match_data else "Data_Não_Encontrada"
 
-                                # 3. Extração do Valor Total
-                                match_total = re.search(r'(?i)Total em Real:[\s\|]*([\d\.,]+)', bloco)
+                                # 3. Extração do Valor Total (Blindada contra quebras de linha)
+                                match_total = re.search(r'(?i)Total\s+(?:em\s+)?Real[^\d]*([\d\.,]+)', bloco)
                                 valor_total_fatura = 0.0
 
                                 if match_total:
