@@ -246,6 +246,9 @@ with tab_ocr:
                         # ==========================================================
                         # 🚦 INTELIGÊNCIA DE DECISÃO: SABIN vs LASALUS vs GUIA MB
                         # ==========================================================
+                        is_sabin = bool(re.search(r'(?i)ORDEM\s+DE\s+SERVIÇO\s+DE\s+ESCRITÓRIO', texto_completo))
+                        is_fatura_tabela = bool(re.search(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo))
+                        
                         if is_sabin:
                             st.info("🟢 Fatura(s) SABIN detetada(s)! A ler e aplicar regras de percentagem...")
 
