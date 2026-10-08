@@ -381,128 +381,142 @@ with tab_ocr:
                                 else:
                                     st.warning(f"⚠️ A fatura {i} de {nome_usu} foi lida, mas o 'Total em Real' não foi detetado corretamente ou é igual a zero.")
 
-                                  
-                        elif is_fatura_tabela:
-                            st.info("📄 Formato de Fatura/Relatório em Tabela detetado (Padrão LASALUS)! A ler registos...")
+                        elif "LASALUS LABORATORIO CLINICO" in texto_completo and "Fatura N.º" in texto_completo:
+                            st.info("📄 Formato Novo de Fatura LASALUS (A partir de FEV/2026) detetado! A estruturar dados e aplicar regras...")
                             
-                            blocos_lasalus = re.split(r'(?i)GUIA\s+DE\s+ENCAMINHAMENTO\s+PARA\s+EXAMES\s+EXTERNOS', texto_completo)
-                            if blocos_lasalus and len(blocos_lasalus[0].strip()) < 50:
-                                blocos_lasalus = blocos_lasalus[1:]
-                                
-                            for i, bloco in enumerate(blocos_lasalus, 1):
-                                exames_encontrados = 0
-                                
-                                # BUSCA DE NIP E NOME BLINDADA CONTRA ERROS DE OCR
-                                match_nip = re.search(r'\b(\d{8})\b', bloco)
-                                nip_usu = match_nip.group(1) if match_nip else "N/A"
-                                
-                                match_nome = re.search(r'(?i)(?:Paciente|Nome)[^\w]*([A-Za-zÀ-Úà-ú\s]{5,})', bloco)
-                                nome_usu = match_nome.group(1).replace('Idade', '').strip() if match_nome else "Não identificado"
-                                
-                                if nip_usu == "N/A":
-                                    continue
+                            linhas = texto_completo.split('\n')
+                            
+                            # Variáveis de Estado (State Machine) para lidar com a quebra de linhas do OCR
+                            current_paciente = "Não identificado"
+                            current_data = ""
+                            current_pedido = ""
+                            
+                            codigo_pendente = None
+                            descricao_pendente = ""
+                            
+                            with st.container(border=True):
+                                for linha in linhas:
+                                    linha = linha.strip()
+                                    if not linha: continue
                                     
-                                with st.container(border=True):
-                                    inicio_tabela = re.search(r'(?i)(?:CÓDIGO\s+DESCRIÇÃO|Relação\s+de\s+exame)', bloco)
-                                    if inicio_tabela:
-                                        texto_tabela = bloco[inicio_tabela.end():]
-                                        linhas = texto_tabela.split('\n')
+                                    # Ignora linhas de lixo ou de quebra estrutural do arquivo
+                                    if "LASALUS LABORATORIO CLINICO" in linha or "Fatura N.º" in linha or "Ordenado pela data" in linha:
+                                        continue
+
+                                    # 1. Identifica o Cabeçalho de um Novo Paciente
+                                    # Regex: [Pedido 8-11 dígitos] + [Data] + [Nome do Paciente]
+                                    match_paciente = re.search(r'^(\d{8,11})\s+(\d{2}/\d{2}/\d{4}(?:\s+\d{2}:\d{2})?)\s+([A-Za-zÀ-Úà-ú\s]+)$', linha)
+                                    if match_paciente:
+                                        current_pedido = match_paciente.group(1)
+                                        current_data = match_paciente.group(2)
+                                        current_paciente = match_paciente.group(3).strip()
+                                        codigo_pendente = None  # Reseta o exame ao trocar de paciente
+                                        continue
                                         
-                                        for linha in linhas:
-                                            if re.search(r'(?i)(?:Guia\s+autorizada|IMPORTANTE|Declaro\s+que|Assinatura)', linha):
-                                                break
-                                                
-                                            # ⚓ REGEX CEGO: Aceita códigos pela metade ou até linhas sem código
-                                            match_linha = re.search(r'^\s*(?:([A-Za-z0-9]{3,10})\s+)?([A-Za-zÀ-Úà-ú].*)', linha)
+                                    # 2. Ignora o nome do Médico para não cruzar com os dados do usuário
+                                    if re.search(r'^(?:Dr\.|Dra\.)\s+', linha, re.IGNORECASE):
+                                        continue
+                                        
+                                    # 3. Fecha os exames do paciente atual
+                                    if "Total do Pedido" in linha:
+                                        codigo_pendente = None
+                                        continue
+                                        
+                                    # 4. Motor de Leitura de Exames Multilinha
+                                    if current_paciente != "Não identificado":
+                                        cod_final = None
+                                        desc_final = None
+                                        valor_str = None
+                                        
+                                        # Verifica se a linha contém o início de um novo Exame (Código TUSS)
+                                        match_exame = re.search(r'\b((?:\d{1,2}\.\d{2}\.\d{2}\.\d{2}-\d)|(?:\d{8}))\b\s+(.+)', linha)
+                                        match_valores = re.search(r'([\d,.]+)\s+([\d,.]+)$', linha) # Procura no final da linha o [C.H.] e [Valor]
+                                        
+                                        if match_exame:
+                                            cod_ocr = match_exame.group(1)
+                                            resto_linha = match_exame.group(2)
+                                            match_valores_resto = re.search(r'([\d,.]+)\s+([\d,.]+)$', resto_linha)
                                             
-                                            if match_linha:
-                                                cod_ocr = match_linha.group(1) if match_linha.group(1) else ""
-                                                if cod_ocr == nip_usu:
-                                                    continue 
-                                                    
-                                                desc_bruta = match_linha.group(2)
-                                                desc_limpa = re.sub(r'[\s\d\,\.\-]+$', '', desc_bruta).strip()
-                                                exames_encontrados += 1
-                                                
-                                                # ===============================================================
-                                                # 🎯 REGRA DE NEGÓCIO E MOTOR FUZZY (LASALUS)
-                                                # ===============================================================
-                                                valor_final = 0.0
-                                                status_cobranca = "Não Avaliado"
+                                            if match_valores_resto:
+                                                # O exame inteiro começou e terminou na mesma linha
                                                 cod_final = cod_ocr
-                                                desc_final = desc_limpa
-                                                perfil_usu = "Desconhecido"
-                                                perc_cobrar = 100
+                                                desc_final = resto_linha[:match_valores_resto.start()].strip()
+                                                valor_str = match_valores_resto.group(2)
+                                                codigo_pendente = None
+                                            else:
+                                                # O exame começou, mas a descrição vai pular para a próxima linha
+                                                codigo_pendente = cod_ocr
+                                                descricao_pendente = resto_linha.strip()
                                                 
-                                                if nip_usu != "N/A":
-                                                    cond_titular = df_bd.get('NIP_TIT,C,8', pd.Series(dtype=str)) == nip_usu
-                                                    cond_depend = df_bd.get('NIP_VINC,C,8', pd.Series(dtype=str)) == nip_usu
-                                                    info_militar = df_bd[cond_titular | cond_depend]
+                                        elif codigo_pendente:
+                                            # Estamos lendo as linhas seguintes de um exame pendente
+                                            if match_valores:
+                                                # Achou o fim da descrição com os valores
+                                                cod_final = codigo_pendente
+                                                desc_final = descricao_pendente + " " + linha[:match_valores.start()].strip()
+                                                valor_str = match_valores.group(2)
+                                                codigo_pendente = None
+                                            else:
+                                                # A descrição continua sem revelar o valor ainda
+                                                descricao_pendente += " " + linha.strip()
+                                                
+                                        # ===============================================================
+                                        # 🎯 PROCESSA E CALCULA O DESCONTO BASEADO NA FATURA
+                                        # ===============================================================
+                                        if cod_final and valor_str:
+                                            try:
+                                                valor_fatura = float(valor_str.replace('.', '').replace(',', '.'))
+                                            except ValueError:
+                                                valor_fatura = 0.0
+                                                
+                                            valor_final = 0.0
+                                            status_cobranca = "Não Avaliado"
+                                            perfil_usu = "Desconhecido"
+                                            perc_cobrar = 100
+                                            nip_usu = "N/A"
+                                            
+                                            # Busca no BD utilizando os DOIS PRIMEIROS NOMES para evitar colisão fina do OCR
+                                            primeiros_nomes = " ".join(current_paciente.split()[:2]).upper()
+                                            cond_nome = df_bd.get('NOME,C,80', pd.Series(dtype=str)).astype(str).str.upper().str.contains(primeiros_nomes, regex=False, na=False)
+                                            info_militar = df_bd[cond_nome]
+                                            
+                                            if not info_militar.empty:
+                                                registro = info_militar.iloc[0]
+                                                nip_usu = str(registro.get('NIP_TIT,C,8', 'N/A'))
+                                                regra_imh = str(registro.get('IMH,C,1', 'S')).strip().upper()
+                                                tipo_dep_raw = str(registro.get('TIPO_DEP,C,1', '')).strip().upper()
+                                                
+                                                if tipo_dep_raw in ['NAN', 'NONE', 'NULL', ''] or len(tipo_dep_raw) == 0:
+                                                    perfil_usu, perc_cobrar = "Titular", 20
+                                                elif tipo_dep_raw == 'D':
+                                                    perfil_usu, perc_cobrar = "Dep. Direto", 20
+                                                else:
+                                                    perfil_usu, perc_cobrar = "Dep. Indireto", 100
                                                     
-                                                    if not info_militar.empty:
-                                                        primeiro_nome_ocr = nome_usu.split()[0].upper() if nome_usu.split() else ""
-                                                        registro = info_militar.iloc[0] 
-                                                        for idx, row in info_militar.iterrows():
-                                                            if primeiro_nome_ocr in str(row.get('NOME,C,80', '')).upper():
-                                                                registro = row
-                                                                break
-                                                                
-                                                        regra_imh = str(registro.get('IMH,C,1', 'S')).strip().upper()
-                                                        tipo_dep_raw = str(registro.get('TIPO_DEP,C,1', '')).strip().upper()
-                                                        
-                                                        if tipo_dep_raw in ['NAN', 'NONE', 'NULL', ''] or len(tipo_dep_raw) == 0:
-                                                            perfil_usu, perc_cobrar = "Titular", 20
-                                                        elif tipo_dep_raw == 'D':
-                                                            perfil_usu, perc_cobrar = "Dep. Direto", 20
-                                                        else:
-                                                            perfil_usu, perc_cobrar = "Dep. Indireto", 100
-                                                            
-                                                        if regra_imh == 'N':
-                                                            valor_final, status_cobranca = 0.0, f"NÃO INDENIZA (Isento) - {perfil_usu}"
-                                                        else:
-                                                            # MOTOR FUZZY
-                                                            info_cissfa = pd.DataFrame()
-                                                            if cod_ocr and len(cod_ocr) >= 6:
-                                                                match_cod = df_cissfa[df_cissfa['Código'].astype(str).str.contains(cod_ocr, na=False)]
-                                                                if not match_cod.empty:
-                                                                    info_cissfa = match_cod
-                                                                    
-                                                            if info_cissfa.empty:
-                                                                opcoes_desc = df_cissfa['Descrição'].dropna().astype(str).tolist()
-                                                                match_desc = difflib.get_close_matches(desc_limpa.upper(), opcoes_desc, n=1, cutoff=0.4)
-                                                                if match_desc:
-                                                                    info_cissfa = df_cissfa[df_cissfa['Descrição'] == match_desc[0]]
-                                                                    
-                                                            if not info_cissfa.empty:
-                                                                cod_final = str(info_cissfa['Código'].values[0])
-                                                                desc_final = str(info_cissfa['Descrição'].values[0])
-                                                                if perc_cobrar == 100:
-                                                                    valor_final = limpar_moeda(info_cissfa['Valor 100%'].values[0])
-                                                                    status_cobranca = f"Indeniza 100% ({perfil_usu})"
-                                                                else:
-                                                                    valor_final = limpar_moeda(info_cissfa['Valor 20%'].values[0])
-                                                                    status_cobranca = f"Indeniza 20% ({perfil_usu})"
-                                                            else:
-                                                                status_cobranca = "Exame não localizado na CISSFA"
-                                                    else:
-                                                        status_cobranca = "NIP não achado no BD"
-                                                        
-                                                st.caption(f"🔹 Lido OCR: `{cod_ocr}` {desc_limpa} ➡️ **Oficial CISSFA:** `{cod_final}` {desc_final} (R$ {valor_final:,.2f})")
+                                                if regra_imh == 'N':
+                                                    valor_final = 0.0
+                                                    status_cobranca = f"NÃO INDENIZA (Isento) - {perfil_usu}"
+                                                else:
+                                                    # Calcula o desconto diretamente em cima da fatura
+                                                    valor_final = valor_fatura * (perc_cobrar / 100.0)
+                                                    status_cobranca = f"Indeniza {perc_cobrar}% ({perfil_usu})"
+                                            else:
+                                                status_cobranca = "Nome do Paciente não achado no BD"
                                                 
-                                                # Salva o resultado unificado
-                                                dados_consolidados_lasalus.append({
-                                                    "Data": data_fatura,  
-                                                    "Arquivo": pdf_carregado.name,
-                                                    "NIP": nip_usu,
-                                                    "Nome Paciente": nome_usu,
-                                                    "Código (CISSFA)": cod_final,
-                                                    "Descrição Exame": desc_final,
-                                                    "Status": status_cobranca,
-                                                    "Valor (R$)": valor_final,
-                                                    "Perfil": perfil_usu
-                                                })
-                                    if exames_encontrados == 0:
-                                        st.warning(f"⚠️ A guia de {nome_usu} foi lida, mas nenhum exame foi detetado sob ela.")
+                                            st.caption(f"🔹 `{current_data}` | **{current_paciente}** | `{cod_final}` {desc_final} | Fatura: R$ {valor_fatura:,.2f} ➡️ **Cobrança:** R$ {valor_final:,.2f} ({status_cobranca})")
+                                            
+                                            dados_consolidados_lasalus.append({
+                                                "Data": current_data,
+                                                "Arquivo": pdf_carregado.name,
+                                                "NIP": nip_usu,
+                                                "Nome Paciente": current_paciente,
+                                                "Código": cod_final,
+                                                "Descrição Exame": desc_final,
+                                                "Status": status_cobranca,
+                                                "Valor Fatura (R$)": valor_fatura,
+                                                "Valor a Cobrar (R$)": valor_final,
+                                                "Perfil": perfil_usu
+                                            })
 
                         else:
                             # ==========================================================
